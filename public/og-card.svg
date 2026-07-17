@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#e8e2d7" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#f4f0e8"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect x="68" y="66" width="1064" height="498" fill="none" stroke="#101216" stroke-width="2"/>
+  <circle cx="137" cy="137" r="45" fill="none" stroke="#101216" stroke-width="2"/>
+  <text x="137" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#101216">DR</text>
+  <text x="92" y="325" font-family="Georgia, serif" font-size="76" fill="#101216">Daniel Rochatka</text>
+  <text x="96" y="390" font-family="Arial, sans-serif" font-size="31" fill="#5f636b">Software Architect · Product Engineer · Researcher</text>
+  <rect x="96" y="430" width="254" height="8" fill="#d88a22"/>
+  <text x="96" y="500" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#1f56d8">daniel.rochatka.com</text>
+</svg>

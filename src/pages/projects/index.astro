@@ -1,0 +1,27 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ProjectCard from '@/components/ProjectCard.astro';
+import { projects } from '@/data/projects';
+---
+<BaseLayout
+  title="Projects"
+  description="Selected software, AI, infrastructure, information-system, and research projects by Daniel Edmund Rochatka."
+>
+  <section class="page-intro section-pad">
+    <p class="eyebrow">Projects</p>
+    <h1>Systems built to test a product thesis, an architectural idea, or both.</h1>
+    <p>Some projects are active products. Others are research programs or incubation-stage concepts. Status labels are intentionally explicit.</p>
+  </section>
+  <section class="section-pad rule-top">
+    <div class="project-grid full">
+      {projects.map((project) => <ProjectCard project={project} />)}
+    </div>
+  </section>
+  <section class="company-boundary section-pad rule-top">
+    <div>
+      <p class="eyebrow">Company work</p>
+      <h2>Commercial capabilities belong at Procyonsoft.</h2>
+    </div>
+    <p>This site presents my personal body of work. Company services, client engagement, and corporate information remain at <a href="https://procyonsoft.com">procyonsoft.com</a>.</p>
+  </section>
+</BaseLayout>

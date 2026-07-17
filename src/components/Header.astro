@@ -1,0 +1,25 @@
+---
+const currentPath = Astro.url.pathname;
+const links = [
+  { href: '/', label: 'Home' },
+  { href: '/projects/', label: 'Projects' },
+  { href: '/research/', label: 'Research' },
+  { href: '/notes/', label: 'Notes' },
+  { href: '/about/', label: 'About' },
+];
+---
+<header class="site-header">
+  <a class="identity" href="/" aria-label="Daniel Rochatka home">
+    <span class="monogram" aria-hidden="true">DR</span>
+    <span>
+      <strong>Daniel Rochatka</strong>
+      <small>Architect · Engineer · Researcher</small>
+    </span>
+  </a>
+  <nav aria-label="Primary navigation">
+    {links.map((link) => (
+      <a href={link.href} aria-current={currentPath === link.href ? 'page' : undefined}>{link.label}</a>
+    ))}
+  </nav>
+  <a class="header-contact" href="/contact/">Contact</a>
+</header>

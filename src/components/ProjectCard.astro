@@ -1,0 +1,13 @@
+---
+import type { Project } from '@/data/projects';
+const { project } = Astro.props as { project: Project };
+---
+<article class="project-card">
+  <div class="project-meta">
+    <span>{project.category}</span>
+    <span class:list={['status', project.status.toLowerCase()]}>{project.status}</span>
+  </div>
+  <h3>{project.title}</h3>
+  <p>{project.summary}</p>
+  {project.href && <a href={project.href}>View publication <span aria-hidden="true">↗</span></a>}
+</article>

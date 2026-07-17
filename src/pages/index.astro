@@ -1,0 +1,94 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ProjectCard from '@/components/ProjectCard.astro';
+import { projects } from '@/data/projects';
+
+const schema = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Person',
+    name: 'Daniel Edmund Rochatka',
+    url: 'https://daniel.rochatka.com',
+    email: 'mailto:daniel@rochatka.com',
+    jobTitle: 'Software Architect and Product Engineer',
+    sameAs: [
+      'https://github.com/danielrochatka',
+      'https://procyonsoft.com',
+    ],
+    knowsAbout: [
+      'Software architecture',
+      'Artificial intelligence',
+      'Product engineering',
+      'Cloud platforms',
+      'Data systems',
+    ],
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Daniel Rochatka',
+    url: 'https://daniel.rochatka.com',
+  },
+];
+---
+<BaseLayout
+  title="Daniel Rochatka"
+  description="The personal site of Daniel Edmund Rochatka, a software architect, product engineer, AI systems builder, and independent researcher."
+  schema={schema}
+>
+  <section class="hero section-pad">
+    <div class="hero-copy">
+      <p class="eyebrow">Daniel Edmund Rochatka</p>
+      <h1>I build systems for ideas that do not fit inside ordinary product boundaries.</h1>
+      <p class="hero-lede">
+        Software architect, product engineer, AI systems builder, and independent researcher working across durable platforms, persistent agents, knowledge systems, and foundational technical frameworks.
+      </p>
+      <div class="hero-actions">
+        <a class="button primary" href="/projects/">Explore projects</a>
+        <a class="button secondary" href="/research/">Read research</a>
+      </div>
+    </div>
+    <aside class="hero-panel" aria-label="Current areas of work">
+      <p>Current focus</p>
+      <ol>
+        <li><span>01</span> Persistent AI agents and evolving memory</li>
+        <li><span>02</span> Verifiable orchestration and knowledge systems</li>
+        <li><span>03</span> Products that turn complex infrastructure into usable tools</li>
+      </ol>
+    </aside>
+  </section>
+
+  <section class="statement section-pad rule-top">
+    <p class="eyebrow">Purpose</p>
+    <div>
+      <h2>A personal record of work, not a second company website.</h2>
+      <p>
+        This site documents the projects, research, technical arguments, and systems thinking associated with my name. Procyonsoft remains the separate home for company capabilities, client work, and commercial engagement.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-pad rule-top">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Selected work</p>
+        <h2>Projects across applied systems and deeper architecture</h2>
+      </div>
+      <a class="text-link" href="/projects/">View all projects <span aria-hidden="true">→</span></a>
+    </div>
+    <div class="project-grid">
+      {projects.slice(0, 4).map((project) => <ProjectCard project={project} />)}
+    </div>
+  </section>
+
+  <section class="split-callout section-pad rule-top">
+    <div>
+      <p class="eyebrow">Working method</p>
+      <h2>Architecture begins where implementation details meet long-term consequences.</h2>
+    </div>
+    <div>
+      <p>I work from first principles, but I expect ideas to survive contact with deployment, operations, users, evidence, and change.</p>
+      <a class="text-link" href="/about/">About my work <span aria-hidden="true">→</span></a>
+    </div>
+  </section>
+</BaseLayout>
