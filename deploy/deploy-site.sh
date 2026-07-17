@@ -22,11 +22,14 @@ if [[ ! -d "${REPO_DIR}/.git" ]]; then
   exit 1
 fi
 
-# Fetch latest from origin and reset the checkout to origin/main.
-# git clean is NOT used: untracked files (including .env) are preserved.
+# Bring the checkout to exactly origin/main.
+# reset --hard updates tracked files; clean removes untracked and ignored files
+# so the build reflects the committed tree and nothing else. .env is excluded
+# because it is untracked by design and must survive across deployments.
 echo "--- Fetching origin/main ---"
 runuser -u deploy -- git -C "${REPO_DIR}" fetch --prune origin main
 runuser -u deploy -- git -C "${REPO_DIR}" reset --hard origin/main
+runuser -u deploy -- git -C "${REPO_DIR}" clean -ffdx --exclude=.env
 
 COMMIT_SHA=$(runuser -u deploy -- git -C "${REPO_DIR}" rev-parse HEAD)
 echo "Commit: ${COMMIT_SHA}"
@@ -71,11 +74,10 @@ echo "--- Syncing to ${WEB_ROOT} ---"
 rsync -a --delete "${DIST_DIR}/" "${WEB_ROOT}/"
 echo "--- Sync complete ---"
 
-# Restart contact service if the unit exists
-if systemctl list-unit-files "${CONTACT_SERVICE}" &>/dev/null; then
-  echo "--- Restarting ${CONTACT_SERVICE} ---"
-  systemctl restart "${CONTACT_SERVICE}"
-fi
+# Restart contact service. Fails if the unit is not installed: the contact form
+# is always published to the live site, so the service must be running.
+echo "--- Restarting ${CONTACT_SERVICE} ---"
+systemctl restart "${CONTACT_SERVICE}"
 
 # Post-deploy verification
 echo "--- Post-deploy verification ---"
@@ -94,12 +96,24 @@ check_url() {
   fi
 }
 
-if systemctl is-active --quiet "${CONTACT_SERVICE}" 2>/dev/null; then
-  check_url "contact healthz" "http://127.0.0.1:8788/healthz"
+check_url "homepage"   "https://daniel.rochatka.com/"
+check_url "robots.txt" "https://daniel.rochatka.com/robots.txt"
+check_url "sitemap"    "https://daniel.rochatka.com/sitemap-index.xml"
+
+# Verify the contact API is reachable through the public Caddy route.
+# The website field (honeypot) is set, so the service returns 200 without
+# sending email. A non-200 response means the service is down or Caddy is
+# not routing /api/contact correctly — both are deploy blockers.
+contact_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST \
+  -d 'name=deploy-check&email=deploy%40example.com&message=deployment+smoke+test&website=bot' \
+  'https://daniel.rochatka.com/api/contact' 2>/dev/null || echo "000")
+if [[ "${contact_status}" == "200" ]]; then
+  echo "  OK    contact API honeypot (${contact_status})"
+else
+  echo "  FAIL  contact API honeypot — expected 200, got ${contact_status}" >&2
+  FAILED=1
 fi
-check_url "homepage"    "https://daniel.rochatka.com/"
-check_url "robots.txt"  "https://daniel.rochatka.com/robots.txt"
-check_url "sitemap"     "https://daniel.rochatka.com/sitemap-index.xml"
 
 if [[ "${FAILED}" -ne 0 ]]; then
   echo "ERROR: Post-deploy verification failed" >&2
