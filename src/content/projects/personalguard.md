@@ -3,7 +3,7 @@ title: "PersonalGuard"
 summary: "An AI-first personal communications platform focused on identity, filtering, prioritization, reply assistance, and privacy-preserving control."
 category: "Personal Infrastructure"
 status: "Incubation"
-featured: false
+featured: true
 priority: 4
 published: true
 seo:

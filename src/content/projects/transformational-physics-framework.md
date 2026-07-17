@@ -3,8 +3,8 @@ title: "Transformational Physics Framework"
 summary: "An exploratory physics framework that treats transformations and their conservation as primary, rather than beginning from energy as the primitive quantity."
 category: "Foundational Research"
 status: "Research"
-featured: false
-priority: 6
+featured: true
+priority: 9
 published: true
 seo:
   title: "Transformational Physics Framework — Foundational Research"
