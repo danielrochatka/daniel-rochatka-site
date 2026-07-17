@@ -74,6 +74,7 @@ h3 { font-size: 1.65rem; }
 .split-callout > div:last-child { align-self: end; max-width: 600px; }
 
 .page-intro { max-width: 1030px; }
+.page-intro h1 { font-size: clamp(3rem, 5vw, 4.75rem); line-height: 0.98; }
 .page-intro > p:last-child { max-width: 760px; margin-top: 2rem; color: var(--muted); font-size: 1.2rem; }
 .research-list article { display: grid; grid-template-columns: 110px 1fr; gap: 2rem; padding: 3rem 0; border-bottom: 1px solid var(--line); }
 .research-index, .empty-number { font-family: var(--serif); color: var(--signal); font-size: 2rem; }
