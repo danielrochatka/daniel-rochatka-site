@@ -1,0 +1,43 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('projects');
+  return entries
+    .filter((p) => p.data.published)
+    .map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const { title, summary, category, status, externalUrl, doiUrl, seo } = entry.data;
+---
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+>
+  <article class="project-detail section-pad">
+    <header class="project-detail-header">
+      <p class="eyebrow">{category}</p>
+      <h1>{title}</h1>
+      <p class="project-detail-summary">{summary}</p>
+      <div class="project-detail-meta">
+        <span class:list={['status', status.toLowerCase()]}>{status}</span>
+        {externalUrl && (
+          <a class="text-link" href={externalUrl} rel="noopener">
+            Visit project <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {doiUrl && (
+          <a class="text-link" href={doiUrl} rel="noopener">
+            View publication <span aria-hidden="true">↗</span>
+          </a>
+        )}
+      </div>
+    </header>
+    <div class="prose rule-top">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

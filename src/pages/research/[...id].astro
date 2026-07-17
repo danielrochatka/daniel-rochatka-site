@@ -1,0 +1,50 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('research');
+  return entries
+    .filter((r) => r.data.published)
+    .map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const { title, status, year, doiUrl, repositoryUrl, seo } = entry.data;
+
+const statusLabel: Record<string, string> = {
+  published: 'Published',
+  developing: 'Developing framework',
+  manuscript: 'Manuscript in preparation',
+};
+---
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+>
+  <article class="project-detail section-pad">
+    <header class="project-detail-header">
+      <p class="eyebrow">Research</p>
+      <h1>{title}</h1>
+      <div class="project-detail-meta">
+        <span class="research-status">
+          {statusLabel[status]}{year ? ` · ${year}` : ''}
+        </span>
+        {doiUrl && (
+          <a class="text-link" href={doiUrl} rel="noopener">
+            View on Zenodo <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {repositoryUrl && (
+          <a class="text-link" href={repositoryUrl} rel="noopener">
+            View repository <span aria-hidden="true">↗</span>
+          </a>
+        )}
+      </div>
+    </header>
+    <div class="prose rule-top">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

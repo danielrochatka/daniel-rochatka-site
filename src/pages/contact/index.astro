@@ -8,12 +8,100 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
   <section class="contact-page section-pad">
     <p class="eyebrow">Contact</p>
     <h1>Start with the subject, context, and decision you are trying to make.</h1>
-    <p>For direct professional or research correspondence:</p>
-    <a class="contact-email" href="mailto:daniel@rochatka.com">daniel@rochatka.com</a>
+    <p>For direct professional or research correspondence, use the form below. The receiving address is kept private.</p>
+
+    <form class="contact-form" id="contact-form" action="/api/contact" method="post" novalidate>
+      <div class="form-field">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="name-error" />
+        <p class="field-error" id="name-error"></p>
+      </div>
+
+      <div class="form-field">
+        <label for="email">Reply email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" aria-describedby="email-error" />
+        <p class="field-error" id="email-error"></p>
+      </div>
+
+      <div class="form-field">
+        <label for="subject">Subject <span class="field-optional">— optional</span></label>
+        <input id="subject" name="subject" type="text" maxlength="120" aria-describedby="subject-error" />
+        <p class="field-error" id="subject-error"></p>
+      </div>
+
+      <div class="form-field">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="7" required minlength="10" maxlength="5000" aria-describedby="message-error"></textarea>
+        <p class="field-error" id="message-error"></p>
+      </div>
+
+      <div class="form-field form-field--honeypot" aria-hidden="true">
+        <label for="website">Website</label>
+        <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <div class="form-actions">
+        <button class="button primary" type="submit" data-default-text="Send message" data-sending-text="Sending…">Send message</button>
+        <p class="form-status" id="contact-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+
     <div class="contact-boundary">
       <strong>Company inquiries</strong>
       <p>For Procyonsoft services or company matters, use the separate corporate site.</p>
       <a class="text-link" href="https://procyonsoft.com/contact/">Visit Procyonsoft contact <span aria-hidden="true">↗</span></a>
     </div>
   </section>
+
+  <script is:inline>
+    const form = document.querySelector('#contact-form');
+    const status = document.querySelector('#contact-status');
+    const submit = form?.querySelector('button[type="submit"]');
+    const fields = ['name', 'email', 'subject', 'message'];
+
+    function setErrors(errors = {}) {
+      for (const field of fields) {
+        const input = form.querySelector(`[name="${field}"]`);
+        const error = document.querySelector(`#${field}-error`);
+        const message = errors[field] || '';
+        if (error) error.textContent = message;
+        if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+      }
+    }
+
+    form?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setErrors();
+      status.textContent = 'Sending your message…';
+      status.className = 'form-status';
+      submit.disabled = true;
+      submit.textContent = submit.dataset.sendingText;
+
+      const payload = Object.fromEntries(new FormData(form).entries());
+      try {
+        const response = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.ok) {
+          form.reset();
+          status.textContent = result.message || 'Thank you. Your message has been sent.';
+          status.classList.add('form-status--success');
+          setErrors();
+          return;
+        }
+        if (result.errors) setErrors(result.errors);
+        status.textContent = result.message || 'Delivery failed. Please try again later.';
+        status.classList.add('form-status--error');
+      } catch {
+        status.textContent = 'Delivery failed. Please check your connection and try again.';
+        status.classList.add('form-status--error');
+      } finally {
+        submit.disabled = false;
+        submit.textContent = submit.dataset.defaultText;
+      }
+    });
+  </script>
 </BaseLayout>

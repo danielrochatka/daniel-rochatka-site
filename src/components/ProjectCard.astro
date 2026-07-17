@@ -1,13 +1,21 @@
 ---
-import type { Project } from '@/data/projects';
-const { project } = Astro.props as { project: Project };
+import type { CollectionEntry } from 'astro:content';
+
+type Props = { project: CollectionEntry<'projects'> };
+const { project } = Astro.props;
+const { title, summary, category, status, externalUrl, doiUrl } = project.data;
+const href = externalUrl ?? doiUrl;
 ---
 <article class="project-card">
   <div class="project-meta">
-    <span>{project.category}</span>
-    <span class:list={['status', project.status.toLowerCase()]}>{project.status}</span>
+    <span>{category}</span>
+    <span class:list={['status', status.toLowerCase()]}>{status}</span>
   </div>
-  <h3>{project.title}</h3>
-  <p>{project.summary}</p>
-  {project.href && <a href={project.href}>View publication <span aria-hidden="true">↗</span></a>}
+  <h3><a href={`/projects/${project.id}/`}>{title}</a></h3>
+  <p>{summary}</p>
+  {href && (
+    <a href={href} rel="noopener">
+      {externalUrl ? 'Visit project' : 'View publication'} <span aria-hidden="true">↗</span>
+    </a>
+  )}
 </article>

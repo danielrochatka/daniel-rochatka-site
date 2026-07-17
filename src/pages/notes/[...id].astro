@@ -1,0 +1,30 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('notes');
+  return entries
+    .filter((n) => !n.data.draft)
+    .map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const { title, date, summary } = entry.data;
+---
+<BaseLayout
+  title={title}
+  description={summary ?? `A note by Daniel Edmund Rochatka: ${title}`}
+>
+  <article class="project-detail section-pad">
+    <header class="project-detail-header">
+      <p class="eyebrow">Notes</p>
+      <h1>{title}</h1>
+      <p class="research-status">{date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    </header>
+    <div class="prose rule-top">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

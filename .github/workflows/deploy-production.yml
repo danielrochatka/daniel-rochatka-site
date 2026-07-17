@@ -1,0 +1,43 @@
+name: Deploy to production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Write SSH credentials
+        run: |
+          install -m 700 -d "${HOME}/.ssh"
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> "${HOME}/.ssh/known_hosts"
+          keyfile="$(mktemp)"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > "$keyfile"
+          chmod 600 "$keyfile"
+          echo "SSH_KEYFILE=$keyfile" >> "$GITHUB_ENV"
+
+      - name: Deploy to production server
+        run: |
+          ssh \
+            -i "${SSH_KEYFILE}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'sudo /usr/local/sbin/deploy-daniel-rochatka-site'
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "${SSH_KEYFILE}"

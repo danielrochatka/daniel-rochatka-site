@@ -1,5 +1,17 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const allResearch = await getCollection('research');
+const entries = allResearch
+  .filter((r) => r.data.published)
+  .sort((a, b) => a.data.priority - b.data.priority);
+
+const statusLabel: Record<string, string> = {
+  published: 'Published',
+  developing: 'Developing framework',
+  manuscript: 'Manuscript in preparation',
+};
 ---
 <BaseLayout
   title="Research"
@@ -12,39 +24,25 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
   </section>
 
   <section class="research-list section-pad rule-top">
-    <article>
-      <div class="research-index">01</div>
-      <div>
-        <p class="research-status">Published · 2026</p>
-        <h2>Hierarchical Voting Retrieval-Augmented Generation</h2>
-        <p>A retrieval architecture that uses hierarchical evidence selection and voting to improve traceability and answer quality across complex source sets.</p>
-        <a class="text-link" href="https://doi.org/10.5281/zenodo.20472565">View on Zenodo <span aria-hidden="true">↗</span></a>
-      </div>
-    </article>
-    <article>
-      <div class="research-index">02</div>
-      <div>
-        <p class="research-status">Published · 2025</p>
-        <h2>Vocarum</h2>
-        <p>A framework for consensus journalism that preserves evidence, agreement, divergence, and interpretive lenses rather than compressing them into a single artificial narrative.</p>
-        <a class="text-link" href="https://doi.org/10.5281/zenodo.16636108">View on Zenodo <span aria-hidden="true">↗</span></a>
-      </div>
-    </article>
-    <article>
-      <div class="research-index">03</div>
-      <div>
-        <p class="research-status">Developing framework</p>
-        <h2>AxiomMesh and Paradigm Revectorization</h2>
-        <p>A persistent-agent architecture in which memory objects retain identity and provenance while model-specific representations can evolve across different latent geometries.</p>
-      </div>
-    </article>
-    <article>
-      <div class="research-index">04</div>
-      <div>
-        <p class="research-status">Manuscript in development</p>
-        <h2>Transformational Physics Framework</h2>
-        <p>An attempt to formulate dynamics from transformations and their conservation, treating energy as an accounting consequence rather than the starting primitive.</p>
-      </div>
-    </article>
+    {entries.map((entry, i) => (
+      <article>
+        <div class="research-index">{String(i + 1).padStart(2, '0')}</div>
+        <div>
+          <p class="research-status">
+            {statusLabel[entry.data.status]}
+            {entry.data.year ? ` · ${entry.data.year}` : ''}
+          </p>
+          <h2>
+            <a href={`/research/${entry.id}/`}>{entry.data.title}</a>
+          </h2>
+          <p>{entry.data.summary}</p>
+          {entry.data.doiUrl && (
+            <a class="text-link" href={entry.data.doiUrl} rel="noopener">
+              View on Zenodo <span aria-hidden="true">↗</span>
+            </a>
+          )}
+        </div>
+      </article>
+    ))}
   </section>
 </BaseLayout>
