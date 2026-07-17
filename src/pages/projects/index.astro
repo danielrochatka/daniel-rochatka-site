@@ -1,7 +1,12 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import ProjectCard from '@/components/ProjectCard.astro';
-import { projects } from '@/data/projects';
+import { getCollection } from 'astro:content';
+
+const allProjects = await getCollection('projects');
+const projects = allProjects
+  .filter((p) => p.data.published)
+  .sort((a, b) => a.data.priority - b.data.priority);
 ---
 <BaseLayout
   title="Projects"
