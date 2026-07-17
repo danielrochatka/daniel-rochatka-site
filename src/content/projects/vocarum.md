@@ -3,7 +3,7 @@ title: "Vocarum"
 summary: "A consensus-journalism framework that models agreement, disagreement, evidence, and interpretive bias without flattening meaningful differences into a single narrative."
 category: "Information Systems"
 status: "Research"
-featured: false
+featured: true
 priority: 3
 published: true
 doiUrl: "https://doi.org/10.5281/zenodo.16636108"

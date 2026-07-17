@@ -4,7 +4,7 @@ summary: "Centralized versioning for documents, structured data, policies, and o
 category: "Product Systems"
 status: "Incubation"
 featured: false
-priority: 5
+priority: 6
 published: true
 seo:
   title: "VComplete — Product Systems"

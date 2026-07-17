@@ -5,9 +5,9 @@ import { getCollection } from 'astro:content';
 
 const allProjects = await getCollection('projects');
 const featuredProjects = allProjects
-  .filter((p) => p.data.published)
+  .filter((p) => p.data.published && p.data.featured)
   .sort((a, b) => a.data.priority - b.data.priority)
-  .slice(0, 4);
+  .slice(0, 6);
 
 const schema = [
   {

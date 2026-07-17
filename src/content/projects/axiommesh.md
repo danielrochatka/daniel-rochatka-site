@@ -4,7 +4,7 @@ summary: "A model-independent memory architecture for persistent agents, designe
 category: "AI Architecture"
 status: "Research"
 featured: false
-priority: 2
+priority: 7
 published: true
 seo:
   title: "AxiomMesh — AI Architecture Research"
