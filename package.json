@@ -8,7 +8,9 @@
     "build": "astro build",
     "build:production": "PUBLIC_SITE_ENV=production astro build",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "contact:start": "node server/contact-server.mjs",
+    "test:contact": "node --test tests/contact-service.test.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",

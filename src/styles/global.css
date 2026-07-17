@@ -90,8 +90,23 @@ h3 { font-size: 1.65rem; }
 .principles p { color: var(--muted); margin-top: .8rem; }
 .contact-page { min-height: 720px; max-width: 980px; }
 .contact-page > p:not(.eyebrow) { margin-top: 2rem; color: var(--muted); font-size: 1.15rem; }
-.contact-email { display: inline-block; margin-top: 1rem; font-family: var(--serif); font-size: clamp(1.7rem, 4vw, 4rem); }
 .contact-boundary { margin-top: 5rem; padding-top: 2rem; border-top: 1px solid var(--line); max-width: 660px; }
+.contact-boundary strong { color: var(--ink); }
+.contact-boundary p { margin-top: .6rem; color: var(--muted); }
+
+.contact-form { display: flex; flex-direction: column; gap: 1.5rem; max-width: 660px; margin-top: 3rem; }
+.form-field { display: flex; flex-direction: column; gap: .4rem; }
+.form-field label { font-size: .82rem; font-weight: 700; }
+.field-optional { font-weight: 400; color: var(--muted); }
+.form-field input, .form-field textarea, .form-field select { padding: .75rem .9rem; border: 1px solid var(--line); background: white; font-family: var(--sans); font-size: 1rem; color: var(--ink); border-radius: 0; }
+.form-field input:focus, .form-field textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.form-field input[aria-invalid="true"], .form-field textarea[aria-invalid="true"] { border-color: #c0392b; }
+.field-error { font-size: .8rem; color: #c0392b; min-height: 1.2em; margin: 0; }
+.form-field--honeypot { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+.form-actions { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+.form-status { font-size: .88rem; margin: 0; }
+.form-status--success { color: #1c6b45; }
+.form-status--error { color: #c0392b; }
 
 .project-detail { max-width: 860px; }
 .project-detail-header { margin-bottom: 3rem; }

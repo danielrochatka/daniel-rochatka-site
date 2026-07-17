@@ -1,0 +1,21 @@
+[Unit]
+Description=Daniel Rochatka contact form delivery service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=daniel-rochatka
+Group=daniel-rochatka
+WorkingDirectory=/opt/sites/daniel-rochatka-site
+EnvironmentFile=/opt/sites/daniel-rochatka-site/.env
+ExecStart=/usr/bin/node server/contact-server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
