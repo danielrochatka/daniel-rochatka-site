@@ -10,6 +10,11 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
     <h1>Start with the subject, context, and decision you are trying to make.</h1>
     <p>For direct professional or research correspondence, use the form below. The receiving address is kept private.</p>
 
+    <noscript>
+      <style>#contact-form { display: none; }</style>
+      <p>JavaScript is required to submit this contact form. Please enable JavaScript in your browser and reload the page.</p>
+    </noscript>
+
     <form class="contact-form" id="contact-form" action="/api/contact" method="post" novalidate>
       <div class="form-field">
         <label for="name">Name</label>
@@ -40,6 +45,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
         <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
       </div>
 
+      <input type="hidden" name="_formStart" id="form-start" />
+
       <div class="form-actions">
         <button class="button primary" type="submit" data-default-text="Send message" data-sending-text="Sending…">Send message</button>
         <p class="form-status" id="contact-status" role="status" aria-live="polite"></p>
@@ -58,6 +65,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
     const status = document.querySelector('#contact-status');
     const submit = form?.querySelector('button[type="submit"]');
     const fields = ['name', 'email', 'subject', 'message'];
+    const formStartInput = document.querySelector('#form-start');
+
+    function resetFormStart() {
+      if (formStartInput) formStartInput.value = String(Date.now());
+    }
+    resetFormStart();
 
     function setErrors(errors = {}) {
       for (const field of fields) {
@@ -87,6 +100,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
         const result = await response.json().catch(() => ({}));
         if (response.ok && result.ok) {
           form.reset();
+          resetFormStart();
           status.textContent = result.message || 'Thank you. Your message has been sent.';
           status.classList.add('form-status--success');
           setErrors();

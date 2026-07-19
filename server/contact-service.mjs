@@ -18,6 +18,7 @@ export function validateEnv(env = process.env) {
     to: env.DANIEL_CONTACT_TO,
     host: env.DANIEL_CONTACT_HOST || '127.0.0.1',
     port: Number.parseInt(env.DANIEL_CONTACT_PORT || '8788', 10),
+    minSubmitMs: Number.parseInt(env.DANIEL_MIN_SUBMIT_SECONDS || '2', 10) * 1000,
   };
 }
 
@@ -30,6 +31,7 @@ export function validateSubmission(input) {
     subject: normalize(value.subject),
     message: normalizeMessage(value.message),
     website: normalize(value.website),
+    _formStart: value._formStart,
   };
 
   if (data.name.length < 2 || data.name.length > 100) errors.name = 'Name must be between 2 and 100 characters.';
@@ -81,6 +83,16 @@ export function createContactServer(options) {
       if (validation.data.website) {
         log({ requestId, timestamp, category: 'honeypot_success' });
         return json(res, 200, SUCCESS);
+      }
+
+      if (config.minSubmitMs > 0) {
+        const ts = Number(validation.data._formStart);
+        const elapsed = now() - ts;
+        // Missing, non-numeric, future, impossibly old, or too-fast timestamps are suppressed.
+        if (validation.data._formStart === undefined || !isFinite(ts) || elapsed < 0 || elapsed > 2 * 60 * 60 * 1000 || elapsed < config.minSubmitMs) {
+          log({ requestId, timestamp, category: 'timing_blocked' });
+          return json(res, 200, SUCCESS);
+        }
       }
 
       const ip = clientIp(req);
