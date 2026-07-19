@@ -183,7 +183,7 @@ test('submission under 2 seconds returns apparent success with no email', async 
   await close();
 });
 
-test('invalid, future, and implausibly old timestamps are handled safely', async () => {
+test('invalid and future timestamps are blocked', async () => {
   const fixedNow = 1_000_000_000_000;
   const { base, close } = await fixture({
     config: { minSubmitMs: 2000 },
@@ -191,11 +191,27 @@ test('invalid, future, and implausibly old timestamps are handled safely', async
     fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
     log: () => {},
   });
-  for (const ts of ['notanumber', fixedNow + 9999, 0, fixedNow - 3 * 60 * 60 * 1000]) {
+  for (const ts of ['notanumber', fixedNow + 9999, 0]) {
     const res = await post(base, { ...valid, _formStart: ts });
     assert.equal(res.status, 200, `timestamp ${ts} should return apparent success`);
     assert.equal(res.body.ok, true);
   }
+  await close();
+});
+
+test('form left open for several hours can still be submitted', async () => {
+  const fixedNow = 1_000_000_000_000;
+  let sent = 0;
+  const { base, close } = await fixture({
+    config: { minSubmitMs: 2000 },
+    now: () => fixedNow,
+    fetchImpl: async () => { sent += 1; return { ok: true, json: async () => ({}) }; },
+  });
+  // 3-hour-old _formStart: elapsed is large but proves the form was not submitted too quickly
+  const res = await post(base, { ...valid, _formStart: fixedNow - 3 * 60 * 60 * 1000 });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(sent, 1, 'old timestamp should not block submission');
   await close();
 });
 
@@ -437,6 +453,54 @@ test('different messages from same sender are not treated as duplicates', async 
   await post(base, { ...valid, message: 'First unique message about this topic.' }, { 'X-Forwarded-For': '10.0.0.1' });
   await post(base, { ...valid, message: 'Second unique message about something else.' }, { 'X-Forwarded-For': '10.0.0.2' });
   assert.equal(sent, 2, 'two different messages should both send');
+  await close();
+  await cleanup();
+});
+
+test('same email+subject+message is suppressed as a duplicate', async () => {
+  let sent = 0;
+  const logs = [];
+  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({
+    store,
+    config: { ipRateLimit: 10 },
+    fetchImpl: async () => { sent += 1; return { ok: true, json: async () => ({}) }; },
+    log: (e) => logs.push(e),
+  });
+  await post(base, valid, { 'X-Forwarded-For': '10.0.0.1' });
+  await post(base, valid, { 'X-Forwarded-For': '10.0.0.2' });
+  assert.equal(sent, 1, 'duplicate should not trigger a second send');
+  assert.ok(logs.some((e) => e.category === 'duplicate_blocked'));
+  await close();
+  await cleanup();
+});
+
+test('same email and message with different subject is a distinct submission', async () => {
+  let sent = 0;
+  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({
+    store,
+    config: { ipRateLimit: 10 },
+    fetchImpl: async () => { sent += 1; return { ok: true, json: async () => ({}) }; },
+  });
+  await post(base, valid, { 'X-Forwarded-For': '10.0.0.1' });
+  await post(base, { ...valid, subject: 'Different subject line' }, { 'X-Forwarded-For': '10.0.0.2' });
+  assert.equal(sent, 2, 'different subject should produce a distinct submission');
+  await close();
+  await cleanup();
+});
+
+test('same email and subject with different message is a distinct submission', async () => {
+  let sent = 0;
+  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({
+    store,
+    config: { ipRateLimit: 10 },
+    fetchImpl: async () => { sent += 1; return { ok: true, json: async () => ({}) }; },
+  });
+  await post(base, valid, { 'X-Forwarded-For': '10.0.0.1' });
+  await post(base, { ...valid, message: 'A completely different message from the same person.' }, { 'X-Forwarded-For': '10.0.0.2' });
+  assert.equal(sent, 2, 'different message should produce a distinct submission');
   await close();
   await cleanup();
 });
@@ -704,9 +768,9 @@ test('generateRef produces correct DR- format', () => {
 });
 
 test('hashContent produces stable hex output', () => {
-  const h1 = hashContent('a@b.com', 'hello');
-  const h2 = hashContent('a@b.com', 'hello');
-  const h3 = hashContent('a@b.com', 'world');
+  const h1 = hashContent('a@b.com', 'topic', 'hello');
+  const h2 = hashContent('a@b.com', 'topic', 'hello');
+  const h3 = hashContent('a@b.com', 'topic', 'world');
   assert.equal(h1, h2);
   assert.notEqual(h1, h3);
   assert.match(h1, /^[0-9a-f]{64}$/);

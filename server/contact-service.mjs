@@ -173,8 +173,9 @@ export function createContactServer(options) {
       if (config.minSubmitMs > 0) {
         const ts = Number(data._formStart);
         const elapsed = now() - ts;
-        // Missing, non-numeric, future, impossibly old, or too-fast timestamps are suppressed.
-        if (data._formStart === undefined || !isFinite(ts) || elapsed < 0 || elapsed > 2 * 60 * 60 * 1000 || elapsed < config.minSubmitMs) {
+        // Missing, non-numeric, future, or too-fast timestamps are suppressed.
+        // An old timestamp is acceptable: it proves the form was not submitted too quickly.
+        if (data._formStart === undefined || !isFinite(ts) || elapsed < 0 || elapsed < config.minSubmitMs) {
           log({ requestId, timestamp, category: 'timing_blocked' });
           return json(res, 200, SUCCESS);
         }
@@ -186,7 +187,7 @@ export function createContactServer(options) {
         return json(res, 200, SUCCESS);
       }
 
-      const contentHashVal = hashContent(data.email, data.message);
+      const contentHashVal = hashContent(data.email, data.subject, data.message);
       if (store.isDuplicate(contentHashVal, now())) {
         log({ requestId, timestamp, category: 'duplicate_blocked' });
         return json(res, 200, SUCCESS);

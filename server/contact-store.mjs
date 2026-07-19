@@ -22,9 +22,9 @@ export function generateRef(nowMs = Date.now(), suffixOverride = null) {
   return `DR-${ymd}-${suffix}`;
 }
 
-export function hashContent(normalizedEmail, normalizedMessage) {
+export function hashContent(normalizedEmail, normalizedSubject, normalizedMessage) {
   return createHash('sha256')
-    .update(`${normalizedEmail}\x00${normalizedMessage}`)
+    .update(`${normalizedEmail}\x00${normalizedSubject}\x00${normalizedMessage}`)
     .digest('hex');
 }
 
