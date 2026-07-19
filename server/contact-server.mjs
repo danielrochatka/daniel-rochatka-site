@@ -1,8 +1,15 @@
 import { createContactServer, validateEnv } from './contact-service.mjs';
+import { initStore, createNullStore } from './contact-store.mjs';
 
 const config = validateEnv(process.env);
+
+const store = config.dataDir
+  ? await initStore(config.dataDir)
+  : createNullStore();
+
 const server = createContactServer({
   config,
+  store,
   log: (entry) => console.log(JSON.stringify(entry)),
 });
 

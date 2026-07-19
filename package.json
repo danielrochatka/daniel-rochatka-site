@@ -10,12 +10,14 @@
     "preview": "astro preview",
     "check": "astro check",
     "contact:start": "node server/contact-server.mjs",
-    "test:contact": "node --test tests/contact-service.test.mjs",
+    "test:contact": "node --test tests/contact-service.test.mjs tests/contact-webhook.test.mjs",
+    "test:contact-webhook": "node --test tests/contact-webhook.test.mjs",
     "generate:social-image": "node scripts/generate-social-image.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
-    "astro": "^7.1.0"
+    "astro": "^7.1.0",
+    "svix": "^1.98.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
