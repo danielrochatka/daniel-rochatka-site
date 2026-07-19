@@ -173,9 +173,9 @@ export function createContactServer(options) {
       if (config.minSubmitMs > 0) {
         const ts = Number(data._formStart);
         const elapsed = now() - ts;
-        // Missing, non-numeric, future, or too-fast timestamps are suppressed.
+        // Missing, non-positive, non-numeric, future, or too-fast timestamps are suppressed.
         // An old timestamp is acceptable: it proves the form was not submitted too quickly.
-        if (data._formStart === undefined || !isFinite(ts) || elapsed < 0 || elapsed < config.minSubmitMs) {
+        if (data._formStart === undefined || !isFinite(ts) || ts <= 0 || elapsed < 0 || elapsed < config.minSubmitMs) {
           log({ requestId, timestamp, category: 'timing_blocked' });
           return json(res, 200, SUCCESS);
         }

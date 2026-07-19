@@ -185,16 +185,30 @@ test('submission under 2 seconds returns apparent success with no email', async 
 
 test('invalid and future timestamps are blocked', async () => {
   const fixedNow = 1_000_000_000_000;
+  let sent = 0;
   const { base, close } = await fixture({
     config: { minSubmitMs: 2000 },
     now: () => fixedNow,
-    fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
+    fetchImpl: async () => { sent += 1; return { ok: true, json: async () => ({}) }; },
     log: () => {},
   });
-  for (const ts of ['notanumber', fixedNow + 9999, 0]) {
-    const res = await post(base, { ...valid, _formStart: ts });
-    assert.equal(res.status, 200, `timestamp ${ts} should return apparent success`);
-    assert.equal(res.body.ok, true);
+  // Each case must return apparent success and must not trigger an email send.
+  const cases = [
+    { label: 'zero integer',     value: 0 },
+    { label: 'zero string',      value: '0' },
+    { label: 'empty string',     value: '' },
+    { label: 'whitespace',       value: '   ' },
+    { label: 'null',             value: null },
+    { label: 'false',            value: false },
+    { label: 'non-numeric',      value: 'notanumber' },
+    { label: 'future timestamp', value: fixedNow + 9999 },
+  ];
+  for (const { label, value } of cases) {
+    const before = sent;
+    const res = await post(base, { ...valid, _formStart: value });
+    assert.equal(res.status, 200, `${label}: should return apparent success`);
+    assert.equal(res.body.ok, true, `${label}: body.ok should be true`);
+    assert.equal(sent, before, `${label}: must not send an email`);
   }
   await close();
 });
