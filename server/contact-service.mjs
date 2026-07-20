@@ -5,6 +5,7 @@ import { handleWebhookEvent } from './contact-webhook.mjs';
 
 const MAX_BODY_BYTES = 32 * 1024;
 const IP_WINDOW_MS = 10 * 60 * 1000;
+const EMAIL_ACK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const GLOBAL_BURST_WINDOW_MS = 60 * 1000;
 const SUCCESS = { ok: true, message: 'Thank you. Your message has been sent.' };
 const VERIFY_RETRY = { ok: false, message: 'Verification is unavailable. Please retry verification and submit again.' };
@@ -104,11 +105,13 @@ export function createContactServer(options) {
   const trustedProxies = options.trustedProxies ?? new Set(['127.0.0.1', '::1']);
 
   const ipRateMap = new Map();
+  const emailAckMap = new Map();
   const globalBurst = { count: 0, resetAt: 0 };
 
   const cleanup = setInterval(() => {
     const t = now();
     cleanupWindow(ipRateMap, t);
+    cleanupWindow(emailAckMap, t);
     store.pruneExpired(t);
   }, IP_WINDOW_MS).unref();
 
@@ -250,15 +253,46 @@ export function createContactServer(options) {
         email: data.email,
         emailDisplay: data.emailDisplay,
         notificationStatus,
+        ackStatus: 'pending',
+        ackResendId: null,
+        ackUpdatedAt: null,
         events: [],
       };
+      let persisted = false;
       try {
         await store.save(sub);
+        persisted = true;
       } catch {
         log({ requestId, timestamp, ref, category: 'contact_persistence_failure' });
       }
 
-      log({ requestId, timestamp, ref, category: 'sent' });
+      let ackSent = false;
+      if (persisted && config.ackEnabled && !store.isSuppressedEmail(data.email) && allowWindow(emailAckMap, data.email, now(), EMAIL_ACK_WINDOW_MS, config.emailAckLimit)) {
+        const ackPayload = buildAckPayload(config, data, ref);
+        const ackController = new AbortController();
+        const ackTimeout = setTimeout(() => ackController.abort(), 10_000);
+        try {
+          const ackUpstream = await fetchImpl('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${config.apiKey}`,
+              'Content-Type': 'application/json',
+              'Idempotency-Key': `contact-ack-${ref}`,
+            },
+            body: JSON.stringify(ackPayload),
+            signal: ackController.signal,
+          });
+          if (ackUpstream.ok) {
+            const ackBody = await ackUpstream.json().catch(() => ({}));
+            if (ackBody.id) await store.updateAckResendId(ref, ackBody.id);
+            ackSent = true;
+          }
+        } catch { /* legacy ack failure does not affect submission outcome */ } finally {
+          clearTimeout(ackTimeout);
+        }
+      }
+
+      log({ requestId, timestamp, ref, category: 'sent', ackSent });
       return json(res, 200, SUCCESS);
     } catch (error) {
       if (error?.code === 'BODY_TOO_LARGE') return json(res, 413, { ok: false, message: 'Request body is too large.' });
@@ -302,6 +336,31 @@ export function buildResendPayload(config, data, ref, timestamp) {
   };
 }
 
+
+
+export function buildAckPayload(config, data, ref) {
+  const text = [
+    'Thank you for getting in touch.',
+    '',
+    'Your message has been received and will be reviewed as soon as possible.',
+    '',
+    `Reference: ${ref}`,
+    '',
+    'No confirmation or additional action is required.',
+  ].join('\n');
+  const html = `<p>Thank you for getting in touch.</p><p>Your message has been received and will be reviewed as soon as possible.</p><p><strong>Reference:</strong> ${escapeHtml(ref)}</p><p>No confirmation or additional action is required.</p>`;
+  return {
+    from: config.from,
+    to: [data.emailDisplay || data.email],
+    subject: 'Your message has been received',
+    text,
+    html,
+    tags: [
+      { name: 'category', value: 'contact_ack' },
+      { name: 'submission_ref', value: ref },
+    ],
+  };
+}
 
 export async function verifyTurnstile(fetchImpl, config, token, remoteIp) {
   if (!token || !config.turnstileSecretKey) return { ok: false };

@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildResendPayload, createContactServer, escapeHtml, validateEnv, validateSubmission } from '../server/contact-service.mjs';
+import { buildResendPayload, buildAckPayload, createContactServer, escapeHtml, validateEnv, validateSubmission } from '../server/contact-service.mjs';
 import { initStore, createNullStore, generateRef, hashContent } from '../server/contact-store.mjs';
 
 // Default test config disables origin checks, timing, ack emails, and global burst.
@@ -218,6 +218,47 @@ test('storage failure after successful internal notification still returns succe
   assert.deepEqual(Object.keys(persistenceLog).sort(), ['category', 'ref', 'requestId', 'timestamp'].sort());
   assert.doesNotMatch(JSON.stringify(persistenceLog), /sensitive|private|Ada|Example|collaboration/i);
   await close();
+});
+
+
+test('legacy acknowledgement mode saves ack metadata and sends visitor acknowledgement after internal notification', async () => {
+  const calls = [];
+  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({
+    store,
+    config: { ackEnabled: true },
+    rawFetchImpl: async (url, init) => {
+      calls.push({ url, headers: init.headers, body: init.body && String(init.body) });
+      return url.includes('siteverify') ? okSiteverify() : { ok: true, json: async () => ({ id: `re_${calls.length}` }) };
+    },
+  });
+  const res = await post(base, valid);
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls.map((c) => c.url), [
+    'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+    'https://api.resend.com/emails',
+    'https://api.resend.com/emails',
+  ]);
+  const resendPayloads = calls.filter((c) => c.url.includes('api.resend.com')).map((c) => ({ ...c, body: JSON.parse(c.body) }));
+  assert.deepEqual(resendPayloads[0].body.to, ['dest@example.com']);
+  assert.deepEqual(resendPayloads[1].body.to, ['Ada@Example.com']);
+  assert.match(resendPayloads[1].headers['Idempotency-Key'], /^contact-ack-DR-/);
+  const refTag = resendPayloads[1].body.tags.find((tag) => tag.name === 'submission_ref');
+  assert.equal(store.findRefByResendId('re_3'), refTag.value);
+  await close();
+  await cleanup();
+});
+
+test('buildAckPayload contains ref, correlation tags, and no full message', () => {
+  const data = { ...valid, email: 'ada@example.com', emailDisplay: 'Ada@Example.com' };
+  const payload = buildAckPayload(config, data, 'DR-20260719-ABC123');
+  assert.equal(payload.to[0], 'Ada@Example.com');
+  assert.match(payload.text, /DR-20260719-ABC123/);
+  assert.doesNotMatch(payload.text, new RegExp(valid.message));
+  const catTag = payload.tags?.find((t) => t.name === 'category');
+  const refTag = payload.tags?.find((t) => t.name === 'submission_ref');
+  assert.equal(catTag?.value, 'contact_ack');
+  assert.equal(refTag?.value, 'DR-20260719-ABC123');
 });
 
 // ─── Honeypot ────────────────────────────────────────────────────────────────
