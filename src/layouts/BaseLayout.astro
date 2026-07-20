@@ -47,6 +47,7 @@ const fullTitle = title === 'Daniel Rochatka' ? title : `${title} | Daniel Rocha
     <meta name="twitter:image" content={imageUrl} />
 
     {schema && <script is:inline type="application/ld+json" set:html={JSON.stringify(schema)} />}
+    <slot name="head" />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

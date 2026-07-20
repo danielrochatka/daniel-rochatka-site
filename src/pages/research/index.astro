@@ -11,38 +11,132 @@ const statusLabel: Record<string, string> = {
   published: 'Published',
   developing: 'Developing framework',
   manuscript: 'Manuscript in preparation',
+  filed: 'Provisional filing',
 };
+
+const categoryLabel: Record<string, string> = {
+  artificial_intelligence_computer_science: 'Artificial Intelligence and Computer Science',
+  physics_cosmology: 'Physics and Cosmology',
+  biomedical_fetal_medicine: 'Biomedical and Fetal Medicine',
+  patents_inventions: 'Patents and Inventions',
+};
+
+const creditLabel: Record<string, string> = {
+  author: 'Author',
+  acknowledged_scientific_contributor: 'Acknowledged contributor',
+  related_scientific_publication: 'Related publication',
+  inventor: 'Inventor',
+};
+
+const categoryOrder = [
+  'artificial_intelligence_computer_science',
+  'physics_cosmology',
+  'biomedical_fetal_medicine',
+  'patents_inventions',
+];
+
+const categorized = categoryOrder.map((cat) => ({
+  key: cat,
+  label: categoryLabel[cat],
+  entries: entries.filter((e) => e.data.category === cat),
+})).filter((g) => g.entries.length > 0);
+
+const uncategorized = entries.filter((e) => !e.data.category);
 ---
 <BaseLayout
   title="Research"
-  description="Research publications and developing frameworks by Daniel Edmund Rochatka, spanning AI retrieval, information systems, persistent agents, and foundational physics."
+  description="Research publications, acknowledged contributions, and developing frameworks by Daniel Edmund Rochatka, spanning AI retrieval, physics and cosmology, fetal medicine, and independent research programs."
 >
   <section class="page-intro section-pad">
     <p class="eyebrow">Research</p>
     <h1>Ideas developed far enough to expose their assumptions.</h1>
-    <p>Research here includes formal publications, architecture programs, and manuscripts still being tested. Published and developing work are kept visibly distinct.</p>
+    <p>Formal publications, acknowledged contributions, and developing frameworks. Published and developing work are kept visibly distinct. Credit relationships are stated explicitly.</p>
   </section>
 
-  <section class="research-list section-pad rule-top">
-    {entries.map((entry, i) => (
-      <article>
-        <div class="research-index">{String(i + 1).padStart(2, '0')}</div>
-        <div>
-          <p class="research-status">
-            {statusLabel[entry.data.status]}
-            {entry.data.year ? ` · ${entry.data.year}` : ''}
-          </p>
-          <h2>
-            <a href={`/research/${entry.id}/`}>{entry.data.title}</a>
-          </h2>
-          <p>{entry.data.summary}</p>
-          {entry.data.doiUrl && (
-            <a class="text-link" href={entry.data.doiUrl} rel="noopener">
-              View on Zenodo <span aria-hidden="true">↗</span>
-            </a>
-          )}
-        </div>
-      </article>
-    ))}
+  <section class="research-profiles section-pad rule-top">
+    <p class="eyebrow">Researcher profiles</p>
+    <div class="profile-links">
+      <a class="profile-link" href="https://orcid.org/0009-0004-1007-748X" rel="noopener me">
+        <span class="profile-link-label">ORCID</span>
+        <span class="profile-link-id">0009-0004-1007-748X</span>
+      </a>
+      <a class="profile-link" href="https://scholar.google.com/citations?user=bIoEhOAAAAAJ&hl=en" rel="noopener">
+        <span class="profile-link-label">Google Scholar</span>
+        <span class="profile-link-id">bIoEhOAAAAAJ</span>
+      </a>
+    </div>
   </section>
+
+  {categorized.map((group) => (
+    <section class="research-category section-pad rule-top">
+      <p class="eyebrow">{group.label}</p>
+      <div class="research-list">
+        {group.entries.map((entry, i) => (
+          <article>
+            <div class="research-index">{String(i + 1).padStart(2, '0')}</div>
+            <div>
+              <div class="research-entry-meta">
+                <p class="research-status">
+                  {statusLabel[entry.data.status]}
+                  {entry.data.year ? ` · ${entry.data.year}` : ''}
+                </p>
+                {entry.data.creditType && (
+                  <span class:list={['credit-badge', `credit-${entry.data.creditType.replace(/_/g, '-')}`]}>
+                    {creditLabel[entry.data.creditType]}
+                  </span>
+                )}
+              </div>
+              <h2>
+                <a href={`/research/${entry.id}/`}>{entry.data.title}</a>
+              </h2>
+              {entry.data.journal && (
+                <p class="research-journal">{entry.data.journal}{entry.data.publisher ? ` · ${entry.data.publisher}` : ''}</p>
+              )}
+              <p>{entry.data.summary}</p>
+              <div class="research-entry-links">
+                {entry.data.doiUrl && (
+                  <a class="text-link" href={entry.data.doiUrl} rel="noopener">
+                    {entry.data.journal ? 'View article' : 'View on Zenodo'} <span aria-hidden="true">↗</span>
+                  </a>
+                )}
+                {entry.data.pmid && (
+                  <a class="text-link" href={`https://pubmed.ncbi.nlm.nih.gov/${entry.data.pmid}/`} rel="noopener">
+                    PubMed <span aria-hidden="true">↗</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  ))}
+
+  {uncategorized.length > 0 && (
+    <section class="research-category section-pad rule-top">
+      <p class="eyebrow">Additional research</p>
+      <div class="research-list">
+        {uncategorized.map((entry, i) => (
+          <article>
+            <div class="research-index">{String(i + 1).padStart(2, '0')}</div>
+            <div>
+              <p class="research-status">
+                {statusLabel[entry.data.status]}
+                {entry.data.year ? ` · ${entry.data.year}` : ''}
+              </p>
+              <h2>
+                <a href={`/research/${entry.id}/`}>{entry.data.title}</a>
+              </h2>
+              <p>{entry.data.summary}</p>
+              {entry.data.doiUrl && (
+                <a class="text-link" href={entry.data.doiUrl} rel="noopener">
+                  View on Zenodo <span aria-hidden="true">↗</span>
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )}
 </BaseLayout>

@@ -11,34 +11,108 @@ export async function getStaticPaths() {
 
 const { entry } = Astro.props;
 const { Content } = await render(entry);
-const { title, status, year, doiUrl, repositoryUrl, seo } = entry.data;
+const {
+  title, status, year, doiUrl, repositoryUrl, seo,
+  creditType, doi, pmid, pmcid, journal, publisher,
+  publicationType, projectLink, category,
+} = entry.data;
 
 const statusLabel: Record<string, string> = {
   published: 'Published',
   developing: 'Developing framework',
   manuscript: 'Manuscript in preparation',
+  filed: 'Provisional filing',
 };
+
+const creditLabel: Record<string, string> = {
+  author: 'Author',
+  acknowledged_scientific_contributor: 'Acknowledged scientific contributor',
+  related_scientific_publication: 'Related publication — no credit established',
+  inventor: 'Inventor',
+};
+
+const creditNote: Record<string, string> = {
+  acknowledged_scientific_contributor: 'Daniel Rochatka is acknowledged in this publication for a specific scientific or technical contribution. He is not a byline author.',
+  related_scientific_publication: 'This publication is listed as related research from the same group. No authorship or acknowledged contribution by Daniel Rochatka has been verified in the published record.',
+};
+
+const categoryLabel: Record<string, string> = {
+  artificial_intelligence_computer_science: 'AI and Computer Science',
+  physics_cosmology: 'Physics and Cosmology',
+  biomedical_fetal_medicine: 'Biomedical and Fetal Medicine',
+  patents_inventions: 'Patents and Inventions',
+};
+
+const isAuthoredWork = creditType === 'author' || creditType === 'inventor';
 ---
 <BaseLayout
   title={seo.title}
   description={seo.description}
 >
+  <Fragment slot="head">
+    {isAuthoredWork && doi && (
+      <>
+        <meta name="citation_title" content={title} />
+        <meta name="citation_author" content="Rochatka, Daniel" />
+        {year && <meta name="citation_publication_date" content={String(year)} />}
+        <meta name="citation_doi" content={doi} />
+        {publisher && <meta name="citation_publisher" content={publisher} />}
+        {journal && <meta name="citation_journal_title" content={journal} />}
+      </>
+    )}
+  </Fragment>
   <article class="project-detail section-pad">
     <header class="project-detail-header">
-      <p class="eyebrow">Research</p>
+      <p class="eyebrow">{category ? categoryLabel[category] : 'Research'}</p>
       <h1>{title}</h1>
       <div class="project-detail-meta">
         <span class="research-status">
           {statusLabel[status]}{year ? ` · ${year}` : ''}
         </span>
+        {creditType && (
+          <span class:list={['credit-badge', `credit-${creditType.replace(/_/g, '-')}`]}>
+            {creditLabel[creditType]}
+          </span>
+        )}
+        {publicationType && (
+          <span class="pub-type">{publicationType}</span>
+        )}
+      </div>
+      {(journal || publisher) && (
+        <p class="research-journal-detail">
+          {journal}{journal && publisher ? ' · ' : ''}{publisher}
+        </p>
+      )}
+      {creditNote[creditType ?? ''] && (
+        <p class="credit-note">{creditNote[creditType ?? '']}</p>
+      )}
+      <div class="project-detail-links">
         {doiUrl && (
           <a class="text-link" href={doiUrl} rel="noopener">
-            View on Zenodo <span aria-hidden="true">↗</span>
+            {journal ? 'View article' : 'View on Zenodo'} <span aria-hidden="true">↗</span>
           </a>
+        )}
+        {pmid && (
+          <a class="text-link" href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}/`} rel="noopener">
+            PubMed {pmid} <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {pmcid && (
+          <a class="text-link" href={`https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/`} rel="noopener">
+            PMC {pmcid} <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {doi && (
+          <span class="doi-display">DOI: {doi}</span>
         )}
         {repositoryUrl && (
           <a class="text-link" href={repositoryUrl} rel="noopener">
             View repository <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {projectLink && (
+          <a class="text-link" href={projectLink}>
+            Related project <span aria-hidden="true">→</span>
           </a>
         )}
       </div>
