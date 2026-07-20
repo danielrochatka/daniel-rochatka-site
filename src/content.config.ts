@@ -42,6 +42,7 @@ const research = defineCollection({
       'author',
       'acknowledged_scientific_contributor',
       'related_scientific_publication',
+      'research_contributor',
       'inventor',
     ]).optional(),
     doi: z.string().optional(),

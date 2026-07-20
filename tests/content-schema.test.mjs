@@ -85,24 +85,6 @@ test('research: status values are in the allowed enum', async () => {
   }
 });
 
-test('research: creditType values are in the allowed enum', async () => {
-  const allowed = new Set([
-    'author',
-    'acknowledged_scientific_contributor',
-    'related_scientific_publication',
-    'inventor',
-  ]);
-  const entries = await loadCollection('research');
-  for (const entry of entries) {
-    if (entry.data.creditType) {
-      assert.ok(
-        allowed.has(entry.data.creditType),
-        `${entry.id}: invalid creditType "${entry.data.creditType}"`,
-      );
-    }
-  }
-});
-
 test('research: doiUrl fields start with https://doi.org/', async () => {
   const entries = await loadCollection('research');
   for (const entry of entries) {
@@ -147,6 +129,39 @@ test('research: placental-thickness entry is acknowledged_scientific_contributor
   );
 });
 
+test('research: placental-thickening manuscript is present with research_contributor credit and no DOI', async () => {
+  const entries = await loadCollection('research');
+  const entry = entries.find((e) => e.id === 'placental-thickening-maternal-burden');
+  assert.ok(entry, 'placental-thickening-maternal-burden entry not found');
+  assert.equal(entry.data.status, 'manuscript', 'second placental study must have status manuscript');
+  assert.equal(entry.data.creditType, 'research_contributor', 'second placental study must use research_contributor');
+  assert.equal(entry.data.category, 'biomedical_fetal_medicine', 'second placental study must be in biomedical category');
+  assert.ok(!entry.data.doiUrl, 'second placental study must not have a doiUrl');
+  assert.ok(!entry.data.doi, 'second placental study must not have a doi');
+  assert.ok(!entry.data.pmid, 'second placental study must not have a pmid');
+  assert.ok(!entry.data.pmcid, 'second placental study must not have a pmcid');
+  assert.ok(!entry.data.journal, 'second placental study must not have a journal');
+  assert.notEqual(entry.data.creditType, 'author', 'second placental study must not claim authorship');
+});
+
+test('research: creditType values are in the allowed enum', async () => {
+  const allowed = new Set([
+    'author',
+    'acknowledged_scientific_contributor',
+    'related_scientific_publication',
+    'research_contributor',
+    'inventor',
+  ]);
+  const entries = await loadCollection('research');
+  for (const entry of entries) {
+    if (entry.data.creditType) {
+      assert.ok(
+        allowed.has(entry.data.creditType),
+        `${entry.id}: invalid creditType "${entry.data.creditType}"`,
+      );
+    }
+  }
+});
 
 test('research: PMID and PMCID only appear on journal articles', async () => {
   const entries = await loadCollection('research');
