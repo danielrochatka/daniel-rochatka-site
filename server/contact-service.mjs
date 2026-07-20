@@ -198,6 +198,10 @@ export function createContactServer(options) {
         return json(res, 200, SUCCESS);
       }
 
+      if (!data.turnstileToken) {
+        return json(res, 400, VERIFY_RETRY);
+      }
+
       const ip = clientIp(req, trustedProxies);
 
       if (config.ipRateLimit > 0 && !allowWindow(ipRateMap, ip, now(), IP_WINDOW_MS, config.ipRateLimit)) {
@@ -209,10 +213,6 @@ export function createContactServer(options) {
       if (config.globalBurstLimit > 0 && !allowGlobalBurst(globalBurst, now(), config.globalBurstLimit)) {
         log({ requestId, timestamp, category: 'rate_limited_global' });
         return json(res, 429, { ok: false, message: 'Service temporarily busy. Please try again shortly.' }, { 'Retry-After': '60' });
-      }
-
-      if (!data.turnstileToken) {
-        return json(res, 400, VERIFY_RETRY);
       }
 
       const turnstile = await verifyTurnstile(fetchImpl, config, data.turnstileToken, ip);

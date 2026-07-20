@@ -127,6 +127,23 @@ test('empty Turnstile token sends no email', async () => {
   await close();
 });
 
+test('missing Turnstile token does not consume IP or global rate counters', async () => {
+  const calls = [];
+  const { base, close } = await fixture({
+    config: { ipRateLimit: 3, globalBurstLimit: 1 },
+    rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); },
+  });
+  for (let i = 0; i < 3; i += 1) {
+    const res = await post(base, { ...valid, email: `missing${i}@example.com`, message: `A legitimate message without token number ${i}.`, 'cf-turnstile-response': undefined });
+    assert.equal(res.status, 400);
+  }
+  const validRes = await post(base, { ...valid, email: 'with-token@example.com', message: 'A legitimate message with a valid token.' });
+  assert.equal(validRes.status, 200);
+  assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 1);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 1);
+  await close();
+});
+
 for (const [label, response] of [
   ['failed Siteverify response', { ok: true, json: async () => ({ success: false, hostname: 'localhost' }) }],
   ['expired-token response', { ok: true, json: async () => ({ success: false, 'error-codes': ['timeout-or-duplicate'], hostname: 'localhost' }) }],
