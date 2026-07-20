@@ -6,7 +6,7 @@ status: "Research"
 featured: true
 priority: 3
 published: true
-doiUrl: "https://doi.org/10.5281/zenodo.16636108"
+doiUrl: "https://doi.org/10.5281/zenodo.17148702"
 seo:
   title: "Vocarum — Information Systems Research"
   description: "Vocarum is an AI-assisted journalism framework for transparent consensus reporting, source-grounded claims, and versioned evidence publication."
@@ -18,4 +18,4 @@ The core design problem: when multiple sources address the same event or questio
 
 The architecture includes source aggregation, claim extraction, multi-model interpretation, consensus mapping, divergence classification, and versioned publication with manifest-based provenance tracking.
 
-The accompanying research paper is published at [doi.org/10.5281/zenodo.16636108](https://doi.org/10.5281/zenodo.16636108). Further detail is on the [Procyonsoft project page](https://procyonsoft.com/projects/vocarum/).
+The accompanying research paper is published at [doi.org/10.5281/zenodo.17148702](https://doi.org/10.5281/zenodo.17148702). A provisional patent application was filed with the USPTO in 2025. Further detail is on the [Procyonsoft project page](https://procyonsoft.com/projects/vocarum/).

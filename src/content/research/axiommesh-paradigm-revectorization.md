@@ -2,6 +2,8 @@
 title: "AxiomMesh and Paradigm Revectorization"
 summary: "A persistent-agent memory architecture in which memory objects retain identity and provenance while model-specific representations evolve across different latent geometries."
 status: "developing"
+category: "artificial_intelligence_computer_science"
+creditType: "author"
 priority: 3
 published: true
 seo:

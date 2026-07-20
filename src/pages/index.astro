@@ -20,6 +20,8 @@ const schema = [
       'https://github.com/danielrochatka',
       'https://www.linkedin.com/in/danielrochatka/',
       'https://procyonsoft.com',
+      'https://orcid.org/0009-0004-1007-748X',
+      'https://scholar.google.com/citations?user=bIoEhOAAAAAJ&hl=en',
     ],
     knowsAbout: [
       'Software architecture',
@@ -27,6 +29,8 @@ const schema = [
       'Product engineering',
       'Cloud platforms',
       'Data systems',
+      'Retrieval-augmented generation',
+      'Physics and cosmology',
     ],
   },
   {
@@ -84,6 +88,26 @@ const schema = [
     </div>
     <div class="project-grid">
       {featuredProjects.map((project) => <ProjectCard project={project} />)}
+    </div>
+  </section>
+
+  <section class="research-summary section-pad rule-top">
+    <div>
+      <p class="eyebrow">Independent research</p>
+      <h2>Research spanning AI, physics, and biomedical collaboration.</h2>
+    </div>
+    <div class="research-summary-body">
+      <ul class="research-summary-list">
+        <li>Hierarchical Voting RAG — retrieval architecture separating atom-level granularity from generation context</li>
+        <li>Vocarum — consensus journalism framework built from model intersection and divergence analysis</li>
+        <li>Gravitational Energy Reframed and Unified Gravitational Model — independent cosmological physics research</li>
+        <li>Biomedical research contributions: acknowledged contributor on a published placental-thickness study (Journal of Clinical Medicine) and research contributor on a follow-up matched case-control manuscript</li>
+      </ul>
+      <div class="research-summary-links">
+        <a class="text-link" href="/research/">Full research record <span aria-hidden="true">→</span></a>
+        <a class="text-link" href="https://orcid.org/0009-0004-1007-748X" rel="noopener me">ORCID <span aria-hidden="true">↗</span></a>
+        <a class="text-link" href="https://scholar.google.com/citations?user=bIoEhOAAAAAJ&hl=en" rel="noopener">Google Scholar <span aria-hidden="true">↗</span></a>
+      </div>
     </div>
   </section>
 
