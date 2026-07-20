@@ -108,11 +108,12 @@ test('required environment validation', () => {
 
 // ─── Turnstile verification ──────────────────────────────────────────────────
 
-test('missing Turnstile token sends no email', async () => {
+test('legitimate request without a Turnstile token returns generic verification retry and sends no email', async () => {
   const calls = [];
   const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); } });
   const res = await post(base, { ...valid, 'cf-turnstile-response': undefined });
   assert.equal(res.status, 400);
+  assert.deepEqual(res.body, { ok: false, message: 'Verification is unavailable. Please retry verification and submit again.' });
   assert.equal(calls.length, 0);
   await close();
 });
@@ -278,6 +279,23 @@ test('filled honeypot returns apparent success and sends no email', async () => 
   await close();
 });
 
+test('filled honeypot without Turnstile returns apparent success without verification, email, or persistence', async () => {
+  const calls = [];
+  let saved = 0;
+  const store = { ...createNullStore(), save: async () => { saved += 1; } };
+  const { base, close } = await fixture({
+    store,
+    rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); },
+  });
+  const res = await post(base, { ...valid, website: 'bot.example', 'cf-turnstile-response': undefined });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true, message: 'Thank you. Your message has been sent.' });
+  assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 0);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 0);
+  assert.equal(saved, 0);
+  await close();
+});
+
 // ─── Submission timing ────────────────────────────────────────────────────────
 
 test('submission under 2 seconds returns apparent success with no email', async () => {
@@ -295,6 +313,26 @@ test('submission under 2 seconds returns apparent success with no email', async 
   assert.equal(res.body.ok, true);
   assert.equal(sent, 0);
   assert.ok(logs.some((e) => e.category === 'timing_blocked'));
+  await close();
+});
+
+test('timing-suppressed request without Turnstile returns apparent success without verification, email, or persistence', async () => {
+  const calls = [];
+  let saved = 0;
+  const fixedNow = 1_000_000_000_000;
+  const store = { ...createNullStore(), save: async () => { saved += 1; } };
+  const { base, close } = await fixture({
+    store,
+    config: { minSubmitMs: 2000 },
+    now: () => fixedNow,
+    rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); },
+  });
+  const res = await post(base, { ...valid, _formStart: fixedNow - 500, 'cf-turnstile-response': undefined });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true, message: 'Thank you. Your message has been sent.' });
+  assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 0);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 0);
+  assert.equal(saved, 0);
   await close();
 });
 
