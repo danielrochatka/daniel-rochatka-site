@@ -1,5 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
+
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 ---
 <BaseLayout
   title="Contact"
@@ -15,43 +17,52 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
       <p>JavaScript is required to submit this contact form. Please enable JavaScript in your browser and reload the page.</p>
     </noscript>
 
-    <form class="contact-form" id="contact-form" action="/api/contact" method="post" novalidate>
-      <div class="form-field">
-        <label for="name">Name</label>
-        <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="name-error" />
-        <p class="field-error" id="name-error"></p>
-      </div>
+    {turnstileSiteKey ? (
+      <form class="contact-form" id="contact-form" action="/api/contact" method="post" novalidate data-turnstile-site-key={turnstileSiteKey}>
+        <div class="form-field">
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="name-error" />
+          <p class="field-error" id="name-error"></p>
+        </div>
 
-      <div class="form-field">
-        <label for="email">Reply email</label>
-        <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" aria-describedby="email-error" />
-        <p class="field-error" id="email-error"></p>
-      </div>
+        <div class="form-field">
+          <label for="email">Reply email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" aria-describedby="email-error" />
+          <p class="field-error" id="email-error"></p>
+        </div>
 
-      <div class="form-field">
-        <label for="subject">Subject <span class="field-optional">— optional</span></label>
-        <input id="subject" name="subject" type="text" maxlength="120" aria-describedby="subject-error" />
-        <p class="field-error" id="subject-error"></p>
-      </div>
+        <div class="form-field">
+          <label for="subject">Subject <span class="field-optional">— optional</span></label>
+          <input id="subject" name="subject" type="text" maxlength="120" aria-describedby="subject-error" />
+          <p class="field-error" id="subject-error"></p>
+        </div>
 
-      <div class="form-field">
-        <label for="message">Message</label>
-        <textarea id="message" name="message" rows="7" required minlength="10" maxlength="5000" aria-describedby="message-error"></textarea>
-        <p class="field-error" id="message-error"></p>
-      </div>
+        <div class="form-field">
+          <label for="message">Message</label>
+          <textarea id="message" name="message" rows="7" required minlength="10" maxlength="5000" aria-describedby="message-error"></textarea>
+          <p class="field-error" id="message-error"></p>
+        </div>
 
-      <div class="form-field form-field--honeypot" aria-hidden="true">
-        <label for="website">Website</label>
-        <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
-      </div>
+        <div class="form-field form-field--honeypot" aria-hidden="true">
+          <label for="website">Website</label>
+          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
+        </div>
 
-      <input type="hidden" name="_formStart" id="form-start" />
+        <input type="hidden" name="_formStart" id="form-start" />
 
-      <div class="form-actions">
-        <button class="button primary" type="submit" data-default-text="Send message" data-sending-text="Sending…">Send message</button>
-        <p class="form-status" id="contact-status" role="status" aria-live="polite"></p>
-      </div>
-    </form>
+        <div class="form-field">
+          <div id="turnstile-widget" aria-label="Human verification"></div>
+        </div>
+
+        <div class="form-actions">
+          <button class="button primary" type="submit" data-default-text="Send message" data-sending-text="Sending…" disabled>Send message</button>
+          <p class="form-status" id="contact-status" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+      <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    ) : (
+      <p class="form-status form-status--error" role="status">The contact form is unavailable. Please try again later.</p>
+    )}
 
     <div class="contact-boundary">
       <strong>Company inquiries</strong>
@@ -66,11 +77,56 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
     const submit = form?.querySelector('button[type="submit"]');
     const fields = ['name', 'email', 'subject', 'message'];
     const formStartInput = document.querySelector('#form-start');
+    const turnstileContainer = document.querySelector('#turnstile-widget');
+    let turnstileToken = '';
+    let turnstileWidgetId;
+    let submitting = false;
 
     function resetFormStart() {
       if (formStartInput) formStartInput.value = String(Date.now());
     }
     resetFormStart();
+
+    function updateSubmitState() {
+      if (!submit) return;
+      submit.disabled = submitting || !turnstileToken;
+      submit.textContent = submitting ? submit.dataset.sendingText : submit.dataset.defaultText;
+    }
+
+    function resetTurnstile() {
+      turnstileToken = '';
+      if (window.turnstile && turnstileWidgetId !== undefined) window.turnstile.reset(turnstileWidgetId);
+      updateSubmitState();
+    }
+
+    function verificationRetryMessage() {
+      status.textContent = 'Verification is unavailable. Please retry verification and submit again.';
+      status.className = 'form-status form-status--error';
+    }
+
+    window.onDanielTurnstileSuccess = (token) => {
+      turnstileToken = token || '';
+      updateSubmitState();
+    };
+    window.onDanielTurnstileExpired = () => { resetTurnstile(); verificationRetryMessage(); };
+    window.onDanielTurnstileError = () => { resetTurnstile(); verificationRetryMessage(); };
+
+    function renderTurnstile() {
+      if (!form || !turnstileContainer || !window.turnstile) return;
+      turnstileWidgetId = window.turnstile.render(turnstileContainer, {
+        sitekey: form.dataset.turnstileSiteKey,
+        callback: window.onDanielTurnstileSuccess,
+        'expired-callback': window.onDanielTurnstileExpired,
+        'error-callback': window.onDanielTurnstileError,
+      });
+      updateSubmitState();
+    }
+
+    if (form) {
+      const timer = setInterval(() => {
+        if (window.turnstile) { clearInterval(timer); renderTurnstile(); }
+      }, 50);
+    }
 
     function setErrors(errors = {}) {
       for (const field of fields) {
@@ -85,12 +141,14 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
     form?.addEventListener('submit', async (event) => {
       event.preventDefault();
       setErrors();
+      if (!turnstileToken) { verificationRetryMessage(); updateSubmitState(); return; }
       status.textContent = 'Sending your message…';
       status.className = 'form-status';
-      submit.disabled = true;
-      submit.textContent = submit.dataset.sendingText;
+      submitting = true;
+      updateSubmitState();
 
       const payload = Object.fromEntries(new FormData(form).entries());
+      payload['cf-turnstile-response'] = turnstileToken;
       try {
         const response = await fetch('/api/contact', {
           method: 'POST',
@@ -104,17 +162,20 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           status.textContent = result.message || 'Thank you. Your message has been sent.';
           status.classList.add('form-status--success');
           setErrors();
+          resetTurnstile();
           return;
         }
         if (result.errors) setErrors(result.errors);
-        status.textContent = result.message || 'Delivery failed. Please try again later.';
+        status.textContent = result.message || 'Verification is unavailable. Please retry verification and submit again.';
         status.classList.add('form-status--error');
+        resetTurnstile();
       } catch {
-        status.textContent = 'Delivery failed. Please check your connection and try again.';
+        status.textContent = 'Verification is unavailable. Please retry verification and submit again.';
         status.classList.add('form-status--error');
+        resetTurnstile();
       } finally {
-        submit.disabled = false;
-        submit.textContent = submit.dataset.defaultText;
+        submitting = false;
+        updateSubmitState();
       }
     });
   </script>
