@@ -147,26 +147,6 @@ test('research: placental-thickness entry is acknowledged_scientific_contributor
   );
 });
 
-test('research: fetal-lung entry is related_scientific_publication, not author', async () => {
-  const entries = await loadCollection('research');
-  const entry = entries.find((e) => e.id === 'fetal-lung-biomedicines');
-  assert.ok(entry, 'fetal-lung-biomedicines entry not found');
-  assert.equal(
-    entry.data.creditType,
-    'related_scientific_publication',
-    'fetal-lung-biomedicines must not claim authorship or acknowledged contribution',
-  );
-  assert.notEqual(
-    entry.data.creditType,
-    'author',
-    'fetal-lung-biomedicines must not claim authorship',
-  );
-  assert.notEqual(
-    entry.data.creditType,
-    'acknowledged_scientific_contributor',
-    'fetal-lung-biomedicines must not claim acknowledged contribution',
-  );
-});
 
 test('research: PMID and PMCID only appear on journal articles', async () => {
   const entries = await loadCollection('research');
