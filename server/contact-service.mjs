@@ -87,7 +87,6 @@ export function validateSubmission(input) {
   if (data.subject.length > 120) errors.subject = 'Subject must be 120 characters or fewer.';
   else if (data.subject && CTRL_STRICT.test(data.subject)) errors.subject = 'Subject contains invalid characters.';
 
-  if (!data.turnstileToken) errors._verification = 'Verification is unavailable. Please retry verification and submit again.';
 
   if (data.message.length < 10) errors.message = 'Message must be at least 10 characters.';
   else if (data.message.length > 5000) errors.message = 'Message must be 5000 characters or fewer.';
@@ -199,6 +198,10 @@ export function createContactServer(options) {
         return json(res, 200, SUCCESS);
       }
 
+      if (!data.turnstileToken) {
+        return json(res, 400, VERIFY_RETRY);
+      }
+
       const ip = clientIp(req, trustedProxies);
 
       if (config.ipRateLimit > 0 && !allowWindow(ipRateMap, ip, now(), IP_WINDOW_MS, config.ipRateLimit)) {
@@ -211,7 +214,6 @@ export function createContactServer(options) {
         log({ requestId, timestamp, category: 'rate_limited_global' });
         return json(res, 429, { ok: false, message: 'Service temporarily busy. Please try again shortly.' }, { 'Retry-After': '60' });
       }
-
 
       const turnstile = await verifyTurnstile(fetchImpl, config, data.turnstileToken, ip);
       if (!turnstile.ok) {
