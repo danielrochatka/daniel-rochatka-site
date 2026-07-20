@@ -252,7 +252,11 @@ export function createContactServer(options) {
         notificationStatus,
         events: [],
       };
-      await store.save(sub);
+      try {
+        await store.save(sub);
+      } catch {
+        log({ requestId, timestamp, ref, category: 'contact_persistence_failure' });
+      }
 
       log({ requestId, timestamp, ref, category: 'sent' });
       return json(res, 200, SUCCESS);

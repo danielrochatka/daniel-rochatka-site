@@ -191,6 +191,35 @@ test('Turnstile token is absent from Resend payload and stored submission data; 
   await close();
 });
 
+
+test('storage failure after successful internal notification still returns success without duplicate delivery', async () => {
+  const calls = [];
+  const logs = [];
+  const store = { ...createNullStore(), save: async () => { throw new Error('sensitive storage path /tmp/private'); } };
+  const { base, close } = await fixture({
+    store,
+    log: (entry) => logs.push(entry),
+    rawFetchImpl: async (url, init) => {
+      calls.push({ url, body: init.body && String(init.body) });
+      return url.includes('siteverify') ? okSiteverify() : okResend();
+    },
+  });
+  const res = await post(base, valid);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true, message: 'Thank you. Your message has been sent.' });
+  assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 1);
+  const resendCalls = calls.filter((c) => c.url.includes('api.resend.com'));
+  assert.equal(resendCalls.length, 1);
+  const resendPayload = JSON.parse(resendCalls[0].body);
+  assert.deepEqual(resendPayload.to, ['dest@example.com']);
+  assert.notEqual(resendPayload.to[0], valid.email);
+  const persistenceLog = logs.find((entry) => entry.category === 'contact_persistence_failure');
+  assert.ok(persistenceLog, 'safe persistence failure log is present');
+  assert.deepEqual(Object.keys(persistenceLog).sort(), ['category', 'ref', 'requestId', 'timestamp'].sort());
+  assert.doesNotMatch(JSON.stringify(persistenceLog), /sensitive|private|Ada|Example|collaboration/i);
+  await close();
+});
+
 // ─── Honeypot ────────────────────────────────────────────────────────────────
 
 test('filled honeypot returns apparent success and sends no email', async () => {
