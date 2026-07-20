@@ -10,6 +10,7 @@ import { initStore, createNullStore, generateRef, hashContent } from '../server/
 // Default test config disables origin checks, timing, ack emails, and global burst.
 const config = {
   apiKey: 'test_key',
+  turnstileSecretKey: 'test_secret',
   from: 'Test <forms@example.com>',
   to: 'dest@example.com',
   host: '127.0.0.1',
@@ -34,11 +35,14 @@ const valid = {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function okSiteverify(hostname = 'localhost') { return { ok: true, json: async () => ({ success: true, hostname }) }; }
+function okResend() { return { ok: true, json: async () => ({}) }; }
+
 async function fixture(opts = {}) {
   const store = opts.store ?? createNullStore();
   const server = createContactServer({
     config: { ...config, ...opts.config },
-    fetchImpl: opts.fetchImpl || (async () => ({ ok: true, json: async () => ({}) })),
+    fetchImpl: opts.rawFetchImpl || (async (url, init) => url.includes('siteverify') ? (opts.siteverifyImpl ? opts.siteverifyImpl(url, init) : okSiteverify()) : (opts.fetchImpl ? opts.fetchImpl(url, init) : okResend())),
     log: opts.log || (() => {}),
     store,
     trustedProxies: opts.trustedProxies ?? new Set(['127.0.0.1', '::1']),
@@ -51,10 +55,11 @@ async function fixture(opts = {}) {
 }
 
 async function post(base, payload, headers = {}) {
+  const bodyPayload = Object.hasOwn(payload, 'cf-turnstile-response') ? payload : { ...payload, 'cf-turnstile-response': 'test-token' };
   const res = await fetch(`${base}/api/contact`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.10', ...headers },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(bodyPayload),
   });
   return { status: res.status, body: await res.json() };
 }
@@ -69,81 +74,191 @@ async function tmpStore() {
 
 test('required environment validation', () => {
   assert.throws(() => validateEnv({}), /DANIEL_RESEND_API_KEY/);
-  // ackEnabled=true by default — DANIEL_CONTACT_DATA_DIR and DANIEL_RESEND_WEBHOOK_SECRET become required
   assert.throws(
     () => validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't' }),
-    /DANIEL_CONTACT_DATA_DIR|DANIEL_RESEND_WEBHOOK_SECRET/,
+    /TURNSTILE_SECRET_KEY/,
   );
   // ackEnabled=false — no requirement for data dir or webhook secret
   assert.equal(
-    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', DANIEL_ACK_ENABLED: 'false' }).host,
+    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', TURNSTILE_SECRET_KEY: 'ts', DANIEL_ACK_ENABLED: 'false' }).host,
     '127.0.0.1',
   );
   assert.equal(
-    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', DANIEL_ACK_ENABLED: 'false' }).port,
+    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', TURNSTILE_SECRET_KEY: 'ts', DANIEL_ACK_ENABLED: 'false' }).port,
     8788,
   );
   assert.deepEqual(
-    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', DANIEL_ACK_ENABLED: 'false' }).allowedOrigins,
+    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', TURNSTILE_SECRET_KEY: 'ts', DANIEL_ACK_ENABLED: 'false' }).allowedOrigins,
     ['https://daniel.rochatka.com', 'https://www.daniel.rochatka.com'],
   );
   assert.equal(
-    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', DANIEL_ACK_ENABLED: 'false' }).ackEnabled,
+    validateEnv({ DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', TURNSTILE_SECRET_KEY: 'ts', DANIEL_ACK_ENABLED: 'false' }).ackEnabled,
     false,
   );
   // ackEnabled=true with required vars present — succeeds
   assert.equal(
     validateEnv({
-      DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't',
-      DANIEL_CONTACT_DATA_DIR: '/tmp/dr', DANIEL_RESEND_WEBHOOK_SECRET: 'whsec_test',
+      DANIEL_RESEND_API_KEY: 'k', DANIEL_CONTACT_FROM: 'f', DANIEL_CONTACT_TO: 't', TURNSTILE_SECRET_KEY: 'ts',
+      DANIEL_CONTACT_DATA_DIR: '/tmp/dr', DANIEL_RESEND_WEBHOOK_SECRET: 'whsec_test', DANIEL_ACK_ENABLED: 'true',
     }).ackEnabled,
     true,
   );
 });
 
-// ─── Valid submission sends notification + ack ────────────────────────────────
 
-test('valid submission sends exactly one notification and one acknowledgement', async () => {
+// ─── Turnstile verification ──────────────────────────────────────────────────
+
+test('missing Turnstile token sends no email', async () => {
   const calls = [];
-  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); } });
+  const res = await post(base, { ...valid, 'cf-turnstile-response': undefined });
+  assert.equal(res.status, 400);
+  assert.equal(calls.length, 0);
+  await close();
+});
+
+test('empty Turnstile token sends no email', async () => {
+  const calls = [];
+  const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? okSiteverify() : okResend(); } });
+  const res = await post(base, { ...valid, 'cf-turnstile-response': '   ' });
+  assert.equal(res.status, 400);
+  assert.equal(calls.length, 0);
+  await close();
+});
+
+for (const [label, response] of [
+  ['failed Siteverify response', { ok: true, json: async () => ({ success: false, hostname: 'localhost' }) }],
+  ['expired-token response', { ok: true, json: async () => ({ success: false, 'error-codes': ['timeout-or-duplicate'], hostname: 'localhost' }) }],
+  ['duplicate-token response', { ok: true, json: async () => ({ success: false, 'error-codes': ['timeout-or-duplicate'], hostname: 'localhost' }) }],
+  ['hostname mismatch', { ok: true, json: async () => ({ success: true, hostname: 'evil.example.com' }) }],
+  ['malformed Siteverify response', { ok: true, json: async () => { throw new Error('bad json'); } }],
+]) {
+  test(`${label} sends no email`, async () => {
+    const calls = [];
+    const { base, close } = await fixture({
+      config: { allowedOrigins: ['https://daniel.rochatka.com'] },
+      rawFetchImpl: async (url, init) => { calls.push({ url, init }); return url.includes('siteverify') ? response : okResend(); },
+    });
+    const res = await post(base, valid, { Origin: 'https://daniel.rochatka.com' });
+    assert.equal(res.status, 400);
+    assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 1);
+    assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 0);
+    await close();
+  });
+}
+
+test('Siteverify network failure sends no email', async () => {
+  const calls = [];
+  const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, init }); if (url.includes('siteverify')) throw new Error('network'); return okResend(); } });
+  const res = await post(base, valid);
+  assert.equal(res.status, 400);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 0);
+  await close();
+});
+
+test('Siteverify timeout sends no email', async () => {
+  const calls = [];
+  const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, init }); if (url.includes('siteverify')) throw new DOMException('aborted', 'AbortError'); return okResend(); } });
+  const res = await post(base, valid);
+  assert.equal(res.status, 400);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 0);
+  await close();
+});
+
+test('successful Siteverify validation sends exactly one internal notification in order', async () => {
+  const calls = [];
+  const { base, close } = await fixture({ rawFetchImpl: async (url, init) => { calls.push({ url, body: init.body }); return url.includes('siteverify') ? okSiteverify('localhost') : okResend(); } });
+  const res = await post(base, valid);
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls.map((c) => c.url), ['https://challenges.cloudflare.com/turnstile/v0/siteverify', 'https://api.resend.com/emails']);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 1);
+  await close();
+});
+
+test('Turnstile token is absent from Resend payload and stored submission data; no visitor email is sent', async () => {
+  const calls = [];
+  const saved = [];
+  const store = { ...createNullStore(), save: async (sub) => { saved.push(sub); } };
+  const { base, close } = await fixture({ store, rawFetchImpl: async (url, init) => { calls.push({ url, body: init.body && String(init.body) }); return url.includes('siteverify') ? okSiteverify() : okResend(); } });
+  const res = await post(base, valid);
+  assert.equal(res.status, 200);
+  const resendPayload = JSON.parse(calls.find((c) => c.url.includes('api.resend.com')).body);
+  assert.doesNotMatch(JSON.stringify(resendPayload), /test-token|cf-turnstile-response|turnstile/i);
+  assert.doesNotMatch(JSON.stringify(saved[0]), /test-token|cf-turnstile-response|turnstile/i);
+  assert.deepEqual(resendPayload.to, ['dest@example.com']);
+  assert.notEqual(resendPayload.to[0], valid.email);
+  assert.equal(calls.filter((c) => c.url.includes('api.resend.com')).length, 1);
+  await close();
+});
+
+
+test('storage failure after successful internal notification still returns success without duplicate delivery', async () => {
+  const calls = [];
+  const logs = [];
+  const store = { ...createNullStore(), save: async () => { throw new Error('sensitive storage path /tmp/private'); } };
   const { base, close } = await fixture({
-    config: { ackEnabled: true },
     store,
-    fetchImpl: async (url, init) => {
-      calls.push({ url, body: JSON.parse(init.body) });
-      return { ok: true, json: async () => ({ id: `re_${calls.length}` }) };
+    log: (entry) => logs.push(entry),
+    rawFetchImpl: async (url, init) => {
+      calls.push({ url, body: init.body && String(init.body) });
+      return url.includes('siteverify') ? okSiteverify() : okResend();
     },
   });
   const res = await post(base, valid);
   assert.equal(res.status, 200);
-  assert.equal(res.body.ok, true);
-  assert.equal(calls.length, 2, 'should send notification + ack');
-  const notification = calls.find((c) => Array.isArray(c.body.to) && c.body.to[0] === 'dest@example.com');
-  const ack = calls.find((c) => Array.isArray(c.body.to) && c.body.to[0] !== 'dest@example.com');
-  assert.ok(notification, 'notification email sent');
-  assert.ok(ack, 'ack email sent');
+  assert.deepEqual(res.body, { ok: true, message: 'Thank you. Your message has been sent.' });
+  assert.equal(calls.filter((c) => c.url.includes('siteverify')).length, 1);
+  const resendCalls = calls.filter((c) => c.url.includes('api.resend.com'));
+  assert.equal(resendCalls.length, 1);
+  const resendPayload = JSON.parse(resendCalls[0].body);
+  assert.deepEqual(resendPayload.to, ['dest@example.com']);
+  assert.notEqual(resendPayload.to[0], valid.email);
+  const persistenceLog = logs.find((entry) => entry.category === 'contact_persistence_failure');
+  assert.ok(persistenceLog, 'safe persistence failure log is present');
+  assert.deepEqual(Object.keys(persistenceLog).sort(), ['category', 'ref', 'requestId', 'timestamp'].sort());
+  assert.doesNotMatch(JSON.stringify(persistenceLog), /sensitive|private|Ada|Example|collaboration/i);
+  await close();
+});
+
+
+test('legacy acknowledgement mode saves ack metadata and sends visitor acknowledgement after internal notification', async () => {
+  const calls = [];
+  const { store, cleanup } = await tmpStore();
+  const { base, close } = await fixture({
+    store,
+    config: { ackEnabled: true },
+    rawFetchImpl: async (url, init) => {
+      calls.push({ url, headers: init.headers, body: init.body && String(init.body) });
+      return url.includes('siteverify') ? okSiteverify() : { ok: true, json: async () => ({ id: `re_${calls.length}` }) };
+    },
+  });
+  const res = await post(base, valid);
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls.map((c) => c.url), [
+    'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+    'https://api.resend.com/emails',
+    'https://api.resend.com/emails',
+  ]);
+  const resendPayloads = calls.filter((c) => c.url.includes('api.resend.com')).map((c) => ({ ...c, body: JSON.parse(c.body) }));
+  assert.deepEqual(resendPayloads[0].body.to, ['dest@example.com']);
+  assert.deepEqual(resendPayloads[1].body.to, ['Ada@Example.com']);
+  assert.match(resendPayloads[1].headers['Idempotency-Key'], /^contact-ack-DR-/);
+  const refTag = resendPayloads[1].body.tags.find((tag) => tag.name === 'submission_ref');
+  assert.equal(store.findRefByResendId('re_3'), refTag.value);
   await close();
   await cleanup();
 });
 
-test('acknowledgement email contains the submission reference', async () => {
-  const calls = [];
-  const { store, cleanup } = await tmpStore();
-  const { base, close } = await fixture({
-    config: { ackEnabled: true },
-    store,
-    fetchImpl: async (_url, init) => {
-      calls.push({ body: JSON.parse(init.body) });
-      return { ok: true, json: async () => ({ id: 're_ack' }) };
-    },
-  });
-  await post(base, valid);
-  const ack = calls.find((c) => c.body.to[0] !== 'dest@example.com');
-  assert.ok(ack, 'ack email present');
-  assert.match(ack.body.text, /DR-\d{8}-[A-Z0-9]{6}/);
-  assert.match(ack.body.html, /DR-\d{8}-[A-Z0-9]{6}/);
-  await close();
-  await cleanup();
+test('buildAckPayload contains ref, correlation tags, and no full message', () => {
+  const data = { ...valid, email: 'ada@example.com', emailDisplay: 'Ada@Example.com' };
+  const payload = buildAckPayload(config, data, 'DR-20260719-ABC123');
+  assert.equal(payload.to[0], 'Ada@Example.com');
+  assert.match(payload.text, /DR-20260719-ABC123/);
+  assert.doesNotMatch(payload.text, new RegExp(valid.message));
+  const catTag = payload.tags?.find((t) => t.name === 'category');
+  const refTag = payload.tags?.find((t) => t.name === 'submission_ref');
+  assert.equal(catTag?.value, 'contact_ack');
+  assert.equal(refTag?.value, 'DR-20260719-ABC123');
 });
 
 // ─── Honeypot ────────────────────────────────────────────────────────────────
@@ -405,34 +520,11 @@ test('Retry-After header is included with 429', async () => {
   const res = await fetch(`${base}/api/contact`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.10' },
-    body: JSON.stringify(valid),
+    body: JSON.stringify({ ...valid, 'cf-turnstile-response': 'test-token' }),
   });
   assert.equal(res.status, 429);
   assert.ok(res.headers.get('retry-after'));
   await close();
-});
-
-// ─── Email acknowledgement rate limit ─────────────────────────────────────────
-
-test('email acknowledgement limit is enforced (2 per 24h)', async () => {
-  const ackCalls = [];
-  const { store, cleanup } = await tmpStore();
-  const { base, close } = await fixture({
-    config: { ackEnabled: true, emailAckLimit: 2, ipRateLimit: 10 },
-    store,
-    fetchImpl: async (_url, init) => {
-      const body = JSON.parse(init.body);
-      if (body.to[0] !== 'dest@example.com') ackCalls.push(body);
-      return { ok: true, json: async () => ({ id: `re_${ackCalls.length}` }) };
-    },
-  });
-  for (let i = 0; i < 3; i++) {
-    const msg = `Message number ${i} for ack limit test, unique content here.`;
-    await post(base, { ...valid, message: msg }, { 'X-Forwarded-For': `10.0.0.${i + 1}` });
-  }
-  assert.equal(ackCalls.length, 2, 'only 2 ack emails should be sent');
-  await close();
-  await cleanup();
 });
 
 // ─── Duplicate suppression ────────────────────────────────────────────────────
@@ -556,30 +648,6 @@ test('duplicate cache expires and allows resubmission', async () => {
   await cleanup();
 });
 
-// ─── Failed ack does not block notification ───────────────────────────────────
-
-test('failed acknowledgement does not prevent internal notification', async () => {
-  const notifCalls = [];
-  const { store, cleanup } = await tmpStore();
-  const { base, close } = await fixture({
-    config: { ackEnabled: true },
-    store,
-    fetchImpl: async (_url, init) => {
-      const body = JSON.parse(init.body);
-      if (body.to[0] === 'dest@example.com') {
-        notifCalls.push(body);
-        return { ok: true, json: async () => ({ id: 'notif_id' }) };
-      }
-      throw new Error('Simulated ack send failure');
-    },
-  });
-  const res = await post(base, valid);
-  assert.equal(res.status, 200);
-  assert.equal(notifCalls.length, 1, 'notification was sent despite ack failure');
-  await close();
-  await cleanup();
-});
-
 // ─── HTML and injection escaping ──────────────────────────────────────────────
 
 test('HTML and header-injection payloads are escaped in email', () => {
@@ -682,7 +750,7 @@ test('valid submission without subject uses fallback subject', async () => {
 test('form-encoded submission is accepted', async () => {
   const calls = [];
   const { base, close } = await fixture({ fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, json: async () => ({}) }; } });
-  const form = new URLSearchParams({ name: valid.name, email: valid.email, subject: valid.subject, message: valid.message });
+  const form = new URLSearchParams({ name: valid.name, email: valid.email, subject: valid.subject, message: valid.message, 'cf-turnstile-response': 'test-token' });
   const res = await fetch(`${base}/api/contact`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Forwarded-For': '203.0.113.10' }, body: form });
   assert.equal(res.status, 200);
   assert.equal((await res.json()).ok, true);
@@ -794,37 +862,4 @@ test('validateSubmission rejects unexpected fields', () => {
   const result = validateSubmission({ ...valid, email: 'a@b.com', hack: 'x' });
   assert.equal(result.ok, false);
   assert.ok(result.errors._form);
-});
-
-test('buildAckPayload contains ref, correlation tags, and no full message', () => {
-  const data = { ...valid, email: 'ada@example.com', emailDisplay: 'Ada@Example.com' };
-  const payload = buildAckPayload(config, data, 'DR-20260719-ABC123');
-  assert.equal(payload.to[0], 'Ada@Example.com');
-  assert.match(payload.text, /DR-20260719-ABC123/);
-  assert.doesNotMatch(payload.text, new RegExp(valid.message));
-  const catTag = payload.tags?.find((t) => t.name === 'category');
-  const refTag = payload.tags?.find((t) => t.name === 'submission_ref');
-  assert.equal(catTag?.value, 'contact_ack');
-  assert.equal(refTag?.value, 'DR-20260719-ABC123');
-});
-
-test('acknowledgement send includes Idempotency-Key header with submission reference', async () => {
-  const ackRequests = [];
-  const { store, cleanup } = await tmpStore();
-  const { base, close } = await fixture({
-    config: { ackEnabled: true },
-    store,
-    fetchImpl: async (_url, init) => {
-      const body = JSON.parse(init.body);
-      if (body.to[0] !== 'dest@example.com') ackRequests.push({ headers: init.headers, body });
-      return { ok: true, json: async () => ({ id: 're_ack' }) };
-    },
-  });
-  await post(base, valid);
-  assert.equal(ackRequests.length, 1, 'ack email sent');
-  const refMatch = ackRequests[0].body.text?.match(/DR-\d{8}-[A-Z0-9]{6}/);
-  assert.ok(refMatch, 'ref present in ack body');
-  assert.equal(ackRequests[0].headers['Idempotency-Key'], `contact-ack-${refMatch[0]}`);
-  await close();
-  await cleanup();
 });

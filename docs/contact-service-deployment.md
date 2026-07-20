@@ -2,28 +2,55 @@
 
 The site is a static Astro build served by Caddy. The contact form posts JSON to a same-origin `/api/contact` endpoint that Caddy reverse-proxies to a small local Node.js service.
 
-This service is fully separate from the Procyonsoft contact service. It uses different environment variable names, a different port, a different systemd unit, and a different OS user.
+The normal contact flow is:
+
+1. The browser completes a Cloudflare Turnstile challenge in the contact form.
+2. The browser submits the contact fields plus `cf-turnstile-response` to `/api/contact`.
+3. The Node contact service validates the token with Cloudflare Siteverify.
+4. Only after successful Siteverify validation does the service send one internal Resend notification to Daniel.
+5. No acknowledgement email is sent to the visitor, and there is no email-ownership confirmation workflow.
+
+Turnstile validates the browser challenge. It does not prove ownership of the visitor's submitted email address.
+
+This service is fully separate from the Procyonsoft contact service. It uses Daniel-specific environment variable names, a different port, a different systemd unit, and a different OS user.
 
 ## Environment variables
 
-Store in `/opt/sites/daniel-rochatka-site/.env` — loaded by systemd, never committed to git.
+Store runtime service variables in `/opt/sites/daniel-rochatka-site/.env` — loaded by systemd, never committed to git.
 
-Required:
+Required by the Node contact service:
 
 ```sh
 DANIEL_RESEND_API_KEY=re_replace_me
 DANIEL_CONTACT_FROM="Daniel Rochatka Website <forms@daniel.rochatka.com>"
 DANIEL_CONTACT_TO=destination@example.com
+TURNSTILE_SECRET_KEY=replace_me
 ```
+
+Required at Astro build time for the public widget:
+
+```sh
+PUBLIC_TURNSTILE_SITE_KEY=replace_me
+```
+
+`PUBLIC_TURNSTILE_SITE_KEY` is intentionally public and is embedded into the built contact page. `TURNSTILE_SECRET_KEY` is secret and is used only by the Node contact service at runtime for Siteverify.
 
 Optional:
 
 ```sh
 DANIEL_CONTACT_HOST=127.0.0.1
 DANIEL_CONTACT_PORT=8788
+DANIEL_ALLOWED_ORIGINS=https://daniel.rochatka.com,https://www.daniel.rochatka.com
+DANIEL_MIN_SUBMIT_SECONDS=2
+DANIEL_IP_RATE_LIMIT=3
+DANIEL_GLOBAL_BURST_LIMIT=20
+DANIEL_DUPLICATE_WINDOW_HOURS=24
+DANIEL_ACK_ENABLED=false
 ```
 
-The service exits during startup if any required variable is missing. Do not expose these values in HTML, JavaScript, logs, or committed files.
+The normal Turnstile-gated contact path does not require `DANIEL_CONTACT_DATA_DIR`, `DANIEL_RESEND_WEBHOOK_SECRET`, or `DANIEL_EMAIL_ACK_LIMIT`. Acknowledgement emails and webhook tracking are disabled for the normal contact path.
+
+The service exits during startup if required service variables are missing. Do not expose secret values in HTML, JavaScript, logs, or committed files.
 
 ## Start locally
 
@@ -87,7 +114,7 @@ Run the production build and sync the output to the static web root:
 ```sh
 cd /opt/sites/daniel-rochatka-site
 npm ci
-PUBLIC_SITE_ENV=production npm run build
+PUBLIC_SITE_ENV=production PUBLIC_TURNSTILE_SITE_KEY=replace_me npm run build
 sudo rsync -a --delete dist/ /srv/www/daniel-rochatka/
 ```
 
@@ -99,13 +126,7 @@ Health check from the server:
 curl -i http://127.0.0.1:8788/healthz
 ```
 
-Contact form POST through Caddy:
-
-```sh
-curl -i https://daniel.rochatka.com/api/contact \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test","email":"smoke@example.com","message":"Deployment smoke test."}'
-```
+Contact submissions require a fresh browser Turnstile token. Do not use production credentials in documentation examples. For local browser fixtures only, Cloudflare's public test site key may be used: `1x00000000000000000000AA`.
 
 ## Automatic deployment
 
@@ -127,8 +148,9 @@ When ready, the steps above (npm ci, build, rsync) can be wrapped in a deploy sc
 
 ## Troubleshooting
 
-- **Missing env vars:** `journalctl -u daniel-rochatka-contact.service` shows startup failure. Confirm `.env` exists with all three required variables and is readable by `daniel-rochatka`.
-- **Resend failure (502):** Check service logs for `resend_failure` category. May indicate invalid API key or unverified sender domain in Resend.
+- **Missing env vars:** `journalctl -u daniel-rochatka-contact.service` shows startup failure. Confirm `.env` has the required Daniel and Turnstile service variables and is readable by `daniel-rochatka`.
+- **Turnstile failure:** The service returns a generic retry message and logs safe `turnstile_failed` metadata. Confirm the runtime secret, build-time public site key, and Cloudflare-approved hostnames.
+- **Resend failure (502):** Check service logs for `notification_failure` category. May indicate invalid API key or unverified sender domain in Resend.
 - **Service not listening:** Run `ss -ltnp | grep 8788` on the server. Check `DANIEL_CONTACT_HOST` and `DANIEL_CONTACT_PORT` match the Caddy reverse proxy target.
 - **Caddy 502:** Confirm the Node service is running on `127.0.0.1:8788` and the reverse-proxy matcher appears before static-file handling.
-- **Rate-limit (429):** More than five submissions from the same IP within 15 minutes. Wait for the window to expire.
+- **Rate-limit (429):** More than the configured number of submissions from the same IP within 10 minutes. Wait for the window to expire.

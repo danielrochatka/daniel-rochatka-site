@@ -8,9 +8,10 @@ const IP_WINDOW_MS = 10 * 60 * 1000;
 const EMAIL_ACK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const GLOBAL_BURST_WINDOW_MS = 60 * 1000;
 const SUCCESS = { ok: true, message: 'Thank you. Your message has been sent.' };
+const VERIFY_RETRY = { ok: false, message: 'Verification is unavailable. Please retry verification and submit again.' };
 
 // Fields accepted in a contact submission body
-const ALLOWED_FIELDS = new Set(['name', 'email', 'subject', 'message', 'website', '_formStart']);
+const ALLOWED_FIELDS = new Set(['name', 'email', 'subject', 'message', 'website', '_formStart', 'cf-turnstile-response']);
 
 const CTRL_STRICT = /[\x00-\x1F\x7F]/;
 const CTRL_MESSAGE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
@@ -25,11 +26,11 @@ function parseOrigins(raw) {
 }
 
 export function validateEnv(env = process.env) {
-  const required = ['DANIEL_RESEND_API_KEY', 'DANIEL_CONTACT_FROM', 'DANIEL_CONTACT_TO'];
+  const required = ['DANIEL_RESEND_API_KEY', 'DANIEL_CONTACT_FROM', 'DANIEL_CONTACT_TO', 'TURNSTILE_SECRET_KEY'];
   const missing = required.filter((key) => !String(env[key] ?? '').trim());
   if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 
-  const ackEnabled = env.DANIEL_ACK_ENABLED !== 'false';
+  const ackEnabled = env.DANIEL_ACK_ENABLED === 'true';
   if (ackEnabled) {
     const ackRequired = [
       ['DANIEL_CONTACT_DATA_DIR', env.DANIEL_CONTACT_DATA_DIR],
@@ -42,6 +43,7 @@ export function validateEnv(env = process.env) {
 
   return {
     apiKey: env.DANIEL_RESEND_API_KEY,
+    turnstileSecretKey: env.TURNSTILE_SECRET_KEY,
     from: env.DANIEL_CONTACT_FROM,
     to: env.DANIEL_CONTACT_TO,
     host: env.DANIEL_CONTACT_HOST || '127.0.0.1',
@@ -73,6 +75,7 @@ export function validateSubmission(input) {
     message: normalizeMessage(value.message),
     website: normalize(value.website),
     _formStart: value._formStart,
+    turnstileToken: normalizeToken(value['cf-turnstile-response']),
   };
 
   if (data.name.length < 2 || data.name.length > 100) errors.name = 'Name must be between 2 and 100 characters.';
@@ -83,6 +86,8 @@ export function validateSubmission(input) {
 
   if (data.subject.length > 120) errors.subject = 'Subject must be 120 characters or fewer.';
   else if (data.subject && CTRL_STRICT.test(data.subject)) errors.subject = 'Subject contains invalid characters.';
+
+  if (!data.turnstileToken) errors._verification = 'Verification is unavailable. Please retry verification and submit again.';
 
   if (data.message.length < 10) errors.message = 'Message must be at least 10 characters.';
   else if (data.message.length > 5000) errors.message = 'Message must be 5000 characters or fewer.';
@@ -160,7 +165,8 @@ export function createContactServer(options) {
       const validation = validateSubmission(parsed);
       if (!validation.ok) {
         if (validation.errors._form) return json(res, 400, { ok: false, message: validation.errors._form });
-        return json(res, 422, { ok: false, message: 'Please correct the highlighted fields.', errors: validation.errors });
+        const status = validation.errors._verification && Object.keys(validation.errors).length === 1 ? 400 : 422;
+        return json(res, status, { ok: false, message: validation.errors._verification || 'Please correct the highlighted fields.', errors: validation.errors });
       }
 
       const data = validation.data;
@@ -206,6 +212,13 @@ export function createContactServer(options) {
         return json(res, 429, { ok: false, message: 'Service temporarily busy. Please try again shortly.' }, { 'Retry-After': '60' });
       }
 
+
+      const turnstile = await verifyTurnstile(fetchImpl, config, data.turnstileToken, ip);
+      if (!turnstile.ok) {
+        log({ requestId, timestamp, category: 'turnstile_failed' });
+        return json(res, 400, VERIFY_RETRY);
+      }
+
       const ref = generateRef(now());
       const submittedAt = timestamp;
 
@@ -245,10 +258,16 @@ export function createContactServer(options) {
         ackUpdatedAt: null,
         events: [],
       };
-      await store.save(sub);
+      let persisted = false;
+      try {
+        await store.save(sub);
+        persisted = true;
+      } catch {
+        log({ requestId, timestamp, ref, category: 'contact_persistence_failure' });
+      }
 
       let ackSent = false;
-      if (config.ackEnabled && !store.isSuppressedEmail(data.email) && allowWindow(emailAckMap, data.email, now(), EMAIL_ACK_WINDOW_MS, config.emailAckLimit)) {
+      if (persisted && config.ackEnabled && !store.isSuppressedEmail(data.email) && allowWindow(emailAckMap, data.email, now(), EMAIL_ACK_WINDOW_MS, config.emailAckLimit)) {
         const ackPayload = buildAckPayload(config, data, ref);
         const ackController = new AbortController();
         const ackTimeout = setTimeout(() => ackController.abort(), 10_000);
@@ -268,7 +287,7 @@ export function createContactServer(options) {
             if (ackBody.id) await store.updateAckResendId(ref, ackBody.id);
             ackSent = true;
           }
-        } catch { /* ack failure does not affect submission outcome */ } finally {
+        } catch { /* legacy ack failure does not affect submission outcome */ } finally {
           clearTimeout(ackTimeout);
         }
       }
@@ -317,6 +336,8 @@ export function buildResendPayload(config, data, ref, timestamp) {
   };
 }
 
+
+
 export function buildAckPayload(config, data, ref) {
   const text = [
     'Thank you for getting in touch.',
@@ -341,11 +362,46 @@ export function buildAckPayload(config, data, ref) {
   };
 }
 
+export async function verifyTurnstile(fetchImpl, config, token, remoteIp) {
+  if (!token || !config.turnstileSecretKey) return { ok: false };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const body = new URLSearchParams({ secret: config.turnstileSecretKey, response: token });
+    if (remoteIp && remoteIp !== 'unknown') body.set('remoteip', remoteIp);
+    const upstream = await fetchImpl('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: controller.signal,
+    });
+    if (!upstream?.ok) return { ok: false };
+    const result = await upstream.json();
+    if (result?.success !== true) return { ok: false };
+    return { ok: isApprovedHostname(result.hostname, config.allowedOrigins) };
+  } catch {
+    return { ok: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isApprovedHostname(hostname, allowedOrigins) {
+  const host = String(hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  const approved = new Set();
+  for (const origin of allowedOrigins || []) {
+    try { approved.add(new URL(origin).hostname.toLowerCase()); } catch {}
+  }
+  return approved.has(host);
+}
+
 export function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]);
 }
 
 function normalize(value) { return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''; }
+function normalizeToken(value) { return typeof value === 'string' ? value.trim() : ''; }
 function normalizeMessage(value) { return typeof value === 'string' ? value.trim().replace(/\r\n?/g, '\n') : ''; }
 function isEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
 
